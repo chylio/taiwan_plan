@@ -5,9 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>深耕計畫專案管理儀表板</title>
 
-  <!-- 開發用 CSP（正式請以伺服器 HTTP Header 設定；Teams 嵌入需在 Header 加上 frame-ancestors 允許 Teams 網域）
-       例如伺服器 Header：
-       Content-Security-Policy: frame-ancestors 'self' https://teams.microsoft.com https://*.teams.microsoft.com https://*.office.com; -->
+  <!-- 開發用 CSP（正式請以伺服器 HTTP Header 設定；若嵌入 Teams，請改以 Header 設定 frame-ancestors） -->
   <meta http-equiv="Content-Security-Policy"
         content="default-src 'self';
                  script-src 'self' 'unsafe-inline' https://www.gstatic.com https://cdn.tailwindcss.com https://unpkg.com https://cdn.jsdelivr.net;
@@ -23,20 +21,21 @@
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/main.min.css">
   <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/index.global.min.js"></script>
 
-  <!-- 可選：在此直接放入 Firebase 設定（若你沒有其他注入機制，請填入你的專案值） -->
+  <!-- Firebase 設定（已替換為你的實際值） -->
   <script>
-    // 若你已有部署流程注入 window.__firebase_config 與 window.__app_id，可刪除或保留本段。
-    window.__firebase_config_object = window.__firebase_config_object || {
-      apiKey: "YOUR_API_KEY",
-      authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
-      projectId: "YOUR_PROJECT_ID",
-      storageBucket: "YOUR_PROJECT_ID.appspot.com",
-      messagingSenderId: "YOUR_SENDER_ID",
-      appId: "YOUR_APP_ID"
+    // 你的 Web App Firebase 組態（來自 Firebase Console）
+    window.__firebase_config_object = {
+      apiKey: "AIzaSyCIXWS0ynK4GdsdQIXkOs3fHuzAendZ7LA",
+      authDomain: "taiwanplan-f7566.firebaseapp.com",
+      projectId: "taiwanplan-f7566",
+      storageBucket: "taiwanplan-f7566.firebasestorage.app",
+      messagingSenderId: "874700126533",
+      appId: "1:874700126533:web:5461432d0169b7de6ee62c"
+      // measurementId: "G-T431K2TG7K" // 本專案未啟用 Analytics，可省略
     };
-    // 也可用字串：window.__firebase_config = JSON.stringify({...})
-    window.__app_id = window.__app_id || "default-app-id"; // 可改為你的 APP_ID
-    // 可選：若啟用 App Check，填入 reCAPTCHA v3 site key
+    // 用於切分 Firestore 路徑的 APP_ID（對應 artifacts/{APP_ID}/...）
+    window.__app_id = "taiwanplan-f7566";
+    // 若啟用 App Check（選用）：填入 reCAPTCHA v3 site key
     // window.__app_check_site_key = "YOUR_RECAPTCHA_V3_SITE_KEY";
   </script>
 
@@ -278,6 +277,8 @@
       if(currentView==="details") renderProjectDetails(selectedProjectId);
       if(currentView==="tasks") renderTaskManagement();
       if(currentView==="calendar") renderCalendar();
+      if(currentView==="report") renderReport();
+      if(currentView==="settings") renderSettings();
     }
 
     // 儀表板
@@ -384,7 +385,7 @@
               <label class="block text-sm font-medium text-gray-700">更新/問題描述</label>
               <textarea id="update-message" rows="3" class="mt-1 block w-full rounded-md border-gray-300 p-2 border" placeholder="請輸入更新內容"></textarea>
             </div>
-            <button type="submit" class="w-full py-2 bg-accent-orange text白 rounded-lg hover:bg-orange-700">提交更新</button>
+            <button type="submit" class="w-full py-2 bg-accent-orange text-white rounded-lg hover:bg-orange-700">提交更新</button>
           </form>
           <div id="update-feedback" class="mt-4 text-sm font-medium"></div>
         </div>
@@ -435,7 +436,7 @@
           <i data-lucide="folder-plus" class="w-7 h-7 mr-3 text-primary-blue"></i> 新增/編輯專案資料
         </h2>
 
-        <div class="bg白 p-6 rounded-xl shadow-lg mb-8">
+        <div class="bg-white p-6 rounded-xl shadow-lg mb-8">
           <h3 class="text-xl font-semibold text-gray-800 mb-4 border-b pb-2">新增專案</h3>
           <form id="new-project-form" class="space-y-4">
             <div>
@@ -454,9 +455,18 @@
             </div>
 
             <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div><label class="block text-sm font-medium text-gray-700">人事費 (NTD)</label><input type="number" id="proj-personnel" min="0" value="0" class="mt-1 block w-full rounded-md border-gray-300 p-2 border"/></div>
-              <div><label class="block text-sm font-medium text-gray-700">業務費 (NTD)</label><input type="number" id="proj-operating" min="0" value="0" class="mt-1 block w-full rounded-md border-gray-300 p-2 border"/></div>
-              <div><label class="block text-sm font-medium text-gray-700">設備費 (NTD)</label><input type="number" id="proj-equipment" min="0" value="0" class="mt-1 block w-full rounded-md border-gray-300 p-2 border"/></div>
+              <div>
+                <label class="block text-sm font-medium text-gray-700">人事費 (NTD)</label>
+                <input type="number" id="proj-personnel" min="0" value="0" class="mt-1 block w-full rounded-md border-gray-300 p-2 border"/>
+              </div>
+              <div>
+                <label class="block text-sm font-medium text-gray-700">業務費 (NTD)</label>
+                <input type="number" id="proj-operating" min="0" value="0" class="mt-1 block w-full rounded-md border-gray-300 p-2 border"/>
+              </div>
+              <div>
+                <label class="block text-sm font-medium text-gray-700">設備費 (NTD)</label>
+                <input type="number" id="proj-equipment" min="0" value="0" class="mt-1 block w-full rounded-md border-gray-300 p-2 border"/>
+              </div>
             </div>
 
             <div>
@@ -466,8 +476,14 @@
             </div>
 
             <div class="grid grid-cols-2 gap-4">
-              <div><label class="block text-sm font-medium text-gray-700">初始進度 (%)</label><input type="number" id="proj-progress" min="0" max="100" value="0" required class="mt-1 block w-full rounded-md border-gray-300 p-2 border"/></div>
-              <div><label class="block text-sm font-medium text-gray-700">初始狀態描述</label><input type="text" id="proj-status" required class="mt-1 block w-full rounded-md border-gray-300 p-2 border"/></div>
+              <div>
+                <label class="block text-sm font-medium text-gray-700">初始進度 (%)</label>
+                <input type="number" id="proj-progress" min="0" max="100" value="0" required class="mt-1 block w-full rounded-md border-gray-300 p-2 border"/>
+              </div>
+              <div>
+                <label class="block text-sm font-medium text-gray-700">初始狀態描述</label>
+                <input type="text" id="proj-status" required class="mt-1 block w-full rounded-md border-gray-300 p-2 border"/>
+              </div>
             </div>
 
             <button type="submit" class="w-full py-2 bg-secondary-green text-white rounded-lg hover:bg-green-700">儲存新專案</button>
@@ -475,7 +491,7 @@
           <div id="project-form-feedback" class="mt-4 text-sm font-medium"></div>
         </div>
 
-        <div class="bg白 p-6 rounded-xl shadow-lg">
+        <div class="bg-white p-6 rounded-xl shadow-lg">
           <h3 class="text-xl font-semibold text-gray-800 mb-4 border-b pb-2">已建立專案清單</h3>
           <div id="existing-projects-list" class="space-y-3">
             ${
@@ -486,7 +502,7 @@
                       <div class="flex justify-between items-center p-3 border-b hover:bg-gray-50 rounded-lg">
                         <div>
                           <p class="font-medium text-primary-blue cursor-pointer" onclick="setView('details','${escapeHtml(p.id)}')">${escapeHtml(p.title)}</p>
-                          <p class="text-xs text-gray-500">${escapeHtml(p.id)} | 負責人: ${escapeHtml(p.manager||"")} ${isOwner?'<span class="text-xs font-semibold text-accent-orange ml-2">(我的創建)</span>':""}</p>
+                          <p class="text-xs text-gray-500">${escapeHtml(p.id)} | 負責人: ${escapeHtml(p.manager||"")} ${isOwner?'<span class="text-xs font-semibold text-accent-orange ml-2">(我的專案)</span>':''}</p>
                         </div>
                         <div>
                           ${
@@ -550,7 +566,7 @@
 
         sendTeamsNotification(
           `[新專案建立] ${title}`,
-          `**專案編號:** ${projectId}\n\n**專案管理人:** ${manager}\n\n**預算：**$${budget.toLocaleString()}（人事${personnelBudget.toLocaleString()} / 業務${operatingBudget.toLocaleString()} / 設備${equipmentBudget.toLocaleString()}）\n\n**初始進度:** ${progress}%`,
+          `**專案編號:** ${projectId}\n\n**專案管理人:** ${manager}\n\n**預算：**$${budget.toLocaleString()}（人事${personnelBudget.toLocaleString()} / 業務${operatingBudget.toLocaleString()} / 設備${equipmentBudget.toLocaleString()}）`,
           "059669"
         );
 
@@ -603,7 +619,7 @@
           <h2 class="text-3xl font-bold text-gray-800 mb-6 border-b pb-2 flex items-center">
             <i data-lucide="clipboard-list" class="w-7 h-7 mr-3 text-primary-blue"></i> 專案詳情
           </h2>
-        <div class="bg-white p-6 rounded-xl shadow-lg">
+          <div class="bg-white p-6 rounded-xl shadow-lg">
             <p class="text-gray-700 mb-4">請選擇要查看的專案：</p>
             <div class="flex items-center gap-3">
               <select id="details-project-select" class="rounded-md border-gray-300 p-2 border flex-1">
@@ -632,7 +648,7 @@
               <select id="details-project-select" class="rounded-md border-gray-300 p-2 border flex-1">
                 ${projects.map(p=>`<option value="${escapeHtml(p.id)}">${escapeHtml(p.id)} - ${escapeHtml(p.title)}</option>`).join("")}
               </select>
-              <button id="details-go-btn" class="px-4 py-2 bg-primary-blue text白 rounded-lg hover:bg-blue-700">查看詳情</button>
+              <button id="details-go-btn" class="px-4 py-2 bg-primary-blue text-white rounded-lg hover:bg-blue-700">查看詳情</button>
             </div>
           </div>`;
         if(window.lucide?.createIcons) lucide.createIcons();
@@ -868,14 +884,14 @@
             <div class="flex justify-between items-start">
               <div class="flex-grow">
                 <p class="font-bold text-lg text-gray-900">${escapeHtml(t.taskName||"")}</p>
-                <p class="text-xs text-gray-500">專案: <span class="font-medium text-primary-blue cursor-pointer hover:underline" onclick="setView('details','${escapeHtml(t.projectId)}')">${escapeHtml(project?.title || t.projectId)}</span></p>
+                <p class="text-xs text-gray-500">專案: <span class="font-medium text-primary-blue cursor-pointer hover:underline" onclick="setView('details','${escapeHtml(t.projectId)}')">${escapeHtml(project?.title||t.projectId)}</span></p>
               </div>
               <span class="px-3 py-1 text-xs font-semibold rounded-full ${badge}">${escapeHtml(t.status||"")}</span>
             </div>
             <div class="mt-2 text-sm text-gray-700 flex justify-between items-center">
               <p><i data-lucide="user" class="w-4 h-4 inline mr-1"></i> 負責人: <span class="font-medium">${escapeHtml(t.assignee||"")}</span>
                  <span class="ml-4"><i data-lucide="calendar" class="w-4 h-4 inline mr-1"></i> 期限: ${escapeHtml(t.dueDate||"")}</span></p>
-              <button onclick="${actionFn}" class="px-3 py-1 text-xs rounded-lg text白 ${ t.status!=="更新" ? "bg-secondary-green hover:bg-green-700" : "bg-blue-600 hover:bg-blue-700"}">${actionText}</button>
+              <button onclick="${actionFn}" class="px-3 py-1 text-xs rounded-lg text-white ${ t.status!=="更新" ? "bg-secondary-green hover:bg-green-700" : "bg-blue-600 hover:bg-blue-700"}">${actionText}</button>
             </div>
           </div>`;
       }).join("");
@@ -936,18 +952,31 @@
                   ${ projects.length>0 ? projects.map(p=>`<option value="${escapeHtml(p.id)}">${escapeHtml(p.id)} - ${escapeHtml(p.title)}</option>`).join("") : '<option value="">請先新增專案</option>' }
                 </select>
               </div>
-              <div><label class="block text-sm font-medium text-gray-700">標題</label><input type="text" id="evt-title" required class="mt-1 block w-full rounded-md border-gray-300 p-2 border"/></div>
-              <div><label class="block text-sm font-medium text-gray-700">參與者/負責人</label>
+              <div>
+                <label class="block text-sm font-medium text-gray-700">標題</label>
+                <input type="text" id="evt-title" required class="mt-1 block w-full rounded-md border-gray-300 p-2 border"/>
+              </div>
+              <div>
+                <label class="block text-sm font-medium text-gray-700">參與者/負責人</label>
                 <select id="evt-assignee" class="mt-1 block w-full rounded-md border-gray-300 p-2 border">
                   ${ projectManagers.map(m=>`<option value="${escapeHtml(m)}">${escapeHtml(m)}</option>`).join("") }
                 </select>
               </div>
               <div class="grid grid-cols-2 gap-4">
-                <div><label class="block text-sm font-medium text-gray-700">開始日期</label><input type="date" id="evt-start" required class="mt-1 block w-full rounded-md border-gray-300 p-2 border"/></div>
-                <div><label class="block text-sm font-medium text-gray-700">結束日期</label><input type="date" id="evt-end" required class="mt-1 block w-full rounded-md border-gray-300 p-2 border"/></div>
+                <div>
+                  <label class="block text-sm font-medium text-gray-700">開始日期</label>
+                  <input type="date" id="evt-start" required class="mt-1 block w-full rounded-md border-gray-300 p-2 border"/>
+                </div>
+                <div>
+                  <label class="block text-sm font-medium text-gray-700">結束日期</label>
+                  <input type="date" id="evt-end" required class="mt-1 block w-full rounded-md border-gray-300 p-2 border"/>
+                </div>
               </div>
-              <div><label class="block text-sm font-medium text-gray-700">說明（可選）</label><textarea id="evt-desc" rows="3" class="mt-1 block w-full rounded-md border-gray-300 p-2 border" placeholder="活動內容"></textarea></div>
-              <button type="submit" class="w-full py-2 bg-primary-blue text白 rounded-lg hover:bg-blue-800">新增行事</button>
+              <div>
+                <label class="block text-sm font-medium text-gray-700">說明（可選）</label>
+                <textarea id="evt-desc" rows="3" class="mt-1 block w-full rounded-md border-gray-300 p-2 border" placeholder="補充說明"></textarea>
+              </div>
+              <button type="submit" class="w-full py-2 bg-primary-blue text-white rounded-lg hover:bg-blue-800">新增行事</button>
             </form>
             <div id="event-form-feedback" class="mt-4 text-sm font-medium"></div>
           </div>
@@ -965,7 +994,12 @@
           headerToolbar:{ left:"prev,next today", center:"title", right:"dayGridMonth,timeGridWeek,timeGridDay,listWeek" },
           events: buildCalendarEventsForFC(),
           dateClick:(info)=>{ const s=document.getElementById("evt-start"); const e=document.getElementById("evt-end"); if(s) s.value=info.dateStr; if(e) e.value=info.dateStr; },
-          eventClick:(info)=>{ const ev=info.event; const pId = ev.extendedProps?.projectId||""; const desc=ev.extendedProps?.description||""; showModal(ev.title||"行事", `專案：${pId}\n日期：${ev.startStr}${ev.endStr?(" ～ "+ev.endStr):""}\n說明：${desc}`); }
+          eventClick:(info)=>{ 
+            const ev=info.event; 
+            const pId = ev.extendedProps?.projectId||""; 
+            const desc=ev.extendedProps?.description||""; 
+            showModal(ev.title||"行事", `專案：${pId}\n日期：${ev.startStr}${ev.endStr?(' - '+ev.endStr):''}\n說明：${desc}`);
+          }
         });
         calendarInstance.render();
       }
@@ -998,9 +1032,15 @@
           const pTitle = projects.find(p=>p.id===projectId)?.title || projectId;
           sendTeamsNotification(
             `[行事新增] ${title}`,
-            `**專案:** ${pTitle} (${projectId})\n\n**參與者:** ${assignee}\n\n**日期:** ${startDate}${endDate?(" ～ "+endDate):""}\n\n${description}`,
+            `**專案:** ${pTitle} (${projectId})\n\n**負責人:** ${assignee}\n\n**期間:** ${startDate} ~ ${endDate}`,
             "1e40af"
           );
+
+          // 即時重繪行事曆
+          if(calendarInstance){
+            calendarInstance.removeAllEvents();
+            calendarInstance.addEventSource(buildCalendarEventsForFC());
+          }
         }catch(err){
           console.error(err);
           feedback.className="mt-4 text-sm text-red-600";
@@ -1009,31 +1049,89 @@
       });
     }
 
-    // 其他頁面
+    // 簡易報告與下載
+    function downloadBlob(filename, text){
+      const blob = new Blob([text], {type:"application/json;charset=utf-8"});
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url; a.download = filename;
+      document.body.appendChild(a); a.click();
+      setTimeout(()=>{ document.body.removeChild(a); URL.revokeObjectURL(url); }, 0);
+    }
+
     function renderReport(){
-      document.getElementById("main-content").innerHTML = `
-        <h2 class="text-3xl font-bold text-gray-800 mb-6 border-b pb-2">報告與下載</h2>
-        <div class="bg-white p-6 rounded-xl shadow-lg"><p class="text-gray-600">報告功能開發中。</p></div>`;
+      const c = document.getElementById("main-content");
+      c.innerHTML = `
+        <h2 class="text-3xl font-bold text-gray-800 mb-6 border-b pb-2 flex items-center">
+          <i data-lucide="file-text" class="w-7 h-7 mr-3 text-primary-blue"></i> 報告與下載
+        </h2>
+
+        <div class="bg-white p-6 rounded-xl shadow-lg space-y-4">
+          <p class="text-gray-700">可匯出目前前端快取的資料為 JSON（僅示範用途）。</p>
+          <div class="flex gap-3">
+            <button id="dl-projects" class="px-4 py-2 bg-primary-blue text-white rounded-lg hover:bg-blue-700">下載專案 JSON</button>
+            <button id="dl-tasks" class="px-4 py-2 bg-primary-blue text-white rounded-lg hover:bg-blue-700">下載任務 JSON</button>
+            <button id="dl-events" class="px-4 py-2 bg-primary-blue text-white rounded-lg hover:bg-blue-700">下載行事 JSON</button>
+          </div>
+          <p class="text-xs text-gray-500">實務導出可改為後端產生 CSV/PDF。</p>
+        </div>
+      `;
       if(window.lucide?.createIcons) lucide.createIcons();
+      document.getElementById("dl-projects")?.addEventListener("click", ()=>downloadBlob(`projects-${APP_ID}.json`, JSON.stringify(projects, null, 2)));
+      document.getElementById("dl-tasks")?.addEventListener("click", ()=>downloadBlob(`tasks-${APP_ID}.json`, JSON.stringify(tasks, null, 2)));
+      document.getElementById("dl-events")?.addEventListener("click", ()=>downloadBlob(`events-${APP_ID}.json`, JSON.stringify(events, null, 2)));
     }
 
+    // 系統設定
     function renderSettings(){
-      document.getElementById("main-content").innerHTML = `
-        <h2 class="text-3xl font-bold text-gray-800 mb-6 border-b pb-2">系統設定</h2>
-        <div class="bg-white p-6 rounded-xl shadow-lg space-y-3">
-          <p class="text-gray-600">此站台使用「自動匿名登入」，適合嵌入 Teams Website 分頁。</p>
-          <p class="text-gray-600">建議：在伺服器 Header 設定 frame-ancestors 允許 Teams；在 Firebase Console 開啟 App Check 並強制。</p>
-        </div>`;
+      const c = document.getElementById("main-content");
+      const cfg = firebaseConfig || {};
+      c.innerHTML = `
+        <h2 class="text-3xl font-bold text-gray-800 mb-6 border-b pb-2 flex items-center">
+          <i data-lucide="settings" class="w-7 h-7 mr-3 text-primary-blue"></i> 系統設定
+        </h2>
+
+        <div class="bg-white p-6 rounded-xl shadow-lg space-y-4">
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <h3 class="text-lg font-semibold text-primary-blue mb-2">連線狀態</h3>
+              <p class="text-sm">授權狀態：<span class="${isAuthorized()?'text-green-600':'text-red-600'} font-semibold">${isAuthorized()?'已授權 (匿名)':'未授權'}</span></p>
+              <p class="text-sm">使用者 UID：<span class="font-mono">${escapeHtml(currentUserId||'')}</span></p>
+              <p class="text-sm">APP_ID：<span class="font-mono">${escapeHtml(APP_ID)}</span></p>
+            </div>
+            <div>
+              <h3 class="text-lg font-semibold text-primary-blue mb-2">Firebase 設定摘要</h3>
+              <ul class="text-sm text-gray-700 space-y-1">
+                <li>projectId：<span class="font-mono">${escapeHtml(cfg.projectId||'')}</span></li>
+                <li>authDomain：<span class="font-mono">${escapeHtml(cfg.authDomain||'')}</span></li>
+                <li>storageBucket：<span class="font-mono">${escapeHtml(cfg.storageBucket||'')}</span></li>
+                <li>messagingSenderId：<span class="font-mono">${escapeHtml(cfg.messagingSenderId||'')}</span></li>
+                <li>appId：<span class="font-mono">${escapeHtml(cfg.appId||'')}</span></li>
+              </ul>
+            </div>
+          </div>
+          <div class="pt-2">
+            <button id="btn-reinit" class="px-4 py-2 bg-primary-blue text-white rounded-lg hover:bg-blue-700">重新初始化</button>
+            <button id="btn-goto-dashboard" class="ml-2 px-4 py-2 bg-gray-100 text-gray-800 rounded-lg hover:bg-gray-200">回到儀表板</button>
+          </div>
+        </div>
+      `;
       if(window.lucide?.createIcons) lucide.createIcons();
+      document.getElementById("btn-reinit")?.addEventListener("click", ()=>initFirebase());
+      document.getElementById("btn-goto-dashboard")?.addEventListener("click", ()=>setView('dashboard'));
     }
 
-    function initializeSystem(dbEnabled){
-      setView("dashboard"); // 先顯示 UI
-      if(dbEnabled) startRealtimeListeners();
+    // 啟動流程
+    function initializeSystem(authOk){
+      setView('dashboard');
+      if(authOk) startRealtimeListeners();
     }
 
-    // 啟動
-    initFirebase();
+    // DOM 準備完成後初始化
+    window.addEventListener('DOMContentLoaded', ()=>{
+      if(window.lucide?.createIcons) lucide.createIcons();
+      initFirebase();
+    });
   </script>
 </body>
 </html>

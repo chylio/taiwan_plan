@@ -1,0 +1,953 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>深耕計畫專案管理儀表板</title>
+    <!-- 載入 Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- 載入 Icon: Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <!-- 設定 Tailwind CSS 配置，使用 Inter 字體 -->
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'Noto Sans TC', 'sans-serif'],
+                    },
+                    colors: {
+                        'primary-blue': '#1e40af', // Blue-700
+                        'secondary-green': '#059669', // Emerald-600
+                        'accent-orange': '#ea580c', // Orange-700
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        /* 自定義樣式 */
+        .project-card {
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+            transition: transform 0.2s;
+        }
+        .project-card:hover {
+            transform: translateY(-2px);
+        }
+        .nav-item.active {
+            background-color: #1e40af; /* Primary Blue */
+            color: white;
+            border-left: 4px solid #f97316; /* Orange-500 for accent */
+        }
+        .nav-item {
+            cursor: pointer;
+            transition: all 0.15s;
+        }
+        .progress-bar {
+            transition: width 0.5s ease-in-out;
+        }
+    </style>
+</head>
+<body class="bg-gray-50 font-sans flex min-h-screen">
+
+    <!-- 側邊導航欄 (Sidebar Navigation) -->
+    <aside class="w-64 bg-white shadow-xl flex flex-col fixed h-full z-10">
+        <div class="p-6 border-b border-gray-100">
+            <h1 class="text-2xl font-extrabold text-primary-blue">
+                深耕計畫 <span class="text-secondary-green">PM</span>
+            </h1>
+            <p class="text-xs text-gray-500 mt-1">專案管理中心</p>
+        </div>
+        <nav class="flex-grow p-4 space-y-2">
+            <div id="nav-dashboard" class="nav-item active p-3 rounded-lg text-gray-800 hover:bg-primary-blue hover:text-white flex items-center" onclick="setView('dashboard')">
+                <i data-lucide="layout-dashboard" class="w-5 h-5 mr-3"></i>
+                <span class="font-medium">專案儀表板</span>
+            </div>
+            <div id="nav-details" class="nav-item p-3 rounded-lg text-gray-800 hover:bg-primary-blue hover:text-white flex items-center" onclick="setView('details', 'D_9401')">
+                <i data-lucide="folder-open" class="w-5 h-5 mr-3"></i>
+                <span class="font-medium">專案詳情 (範例)</span>
+            </div>
+            <div id="nav-tasks" class="nav-item p-3 rounded-lg text-gray-800 hover:bg-primary-blue hover:text-white flex items-center" onclick="setView('tasks')">
+                <i data-lucide="check-square" class="w-5 h-5 mr-3"></i>
+                <span class="font-medium">任務管理</span>
+            </div>
+            <div id="nav-report" class="nav-item p-3 rounded-lg text-gray-800 hover:bg-primary-blue hover:text-white flex items-center" onclick="setView('report')">
+                <i data-lucide="file-text" class="w-5 h-5 mr-3"></i>
+                <span class="font-medium">報告與下載</span>
+            </div>
+        </nav>
+        <div class="p-4 border-t border-gray-100 text-sm text-gray-600">
+            <p class="text-xs">當前使用者 ID:</p>
+            <p id="user-id-display" class="font-mono text-xs break-all text-primary-blue">連線中...</p>
+        </div>
+    </aside>
+
+    <!-- 主要內容區域 (Main Content Area) -->
+    <main class="flex-grow ml-64 p-8">
+        <div id="main-content" class="w-full">
+            <!-- 內容將由 JavaScript 動態加載 -->
+        </div>
+    </main>
+
+    <!-- 模態視窗 (Modal for Custom Alert/Confirm) -->
+    <div id="custom-modal" class="fixed inset-0 bg-gray-900 bg-opacity-75 z-50 hidden items-center justify-center">
+        <div class="bg-white rounded-xl p-6 w-full max-w-sm shadow-2xl transform transition-all duration-300 scale-95 opacity-0" id="modal-content-wrapper">
+            <h3 id="modal-title" class="text-xl font-bold mb-4 text-primary-blue">提示</h3>
+            <p id="modal-message" class="text-gray-700 mb-6"></p>
+            <div class="flex justify-end space-x-3">
+                <button id="modal-confirm-btn" class="px-4 py-2 bg-primary-blue text-white rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500">確認</button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- JavaScript 邏輯 -->
+    <script type="module">
+        // =================================================================
+        // 1. Firebase/Firestore 配置與初始化
+        // =================================================================
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, getDoc, addDoc, setDoc, updateDoc, deleteDoc, onSnapshot, collection, query, where, orderBy, serverTimestamp, setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // 設定 Firestore 記錄級別
+        setLogLevel('Debug');
+
+        let db;
+        let auth;
+        let currentUserId = 'initializing';
+        let isAuthReady = false; // 旗標：用於確保 Auth 流程已完成
+        let isListenerStarted = false; // 旗標：用於防止重複啟動監聽器
+
+        const APP_ID = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : null;
+        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+
+
+        // 任務資料庫路徑 (公開，所有專案經理可見)
+        const TASKS_COLLECTION_PATH = `/artifacts/${APP_ID}/public/data/project_tasks`;
+
+        // 初始化 Firebase
+        if (firebaseConfig && initialAuthToken) {
+            const app = initializeApp(firebaseConfig);
+            db = getFirestore(app);
+            auth = getAuth(app);
+            
+            // --- NEW: Sequential Authentication Function ---
+            // 使用 async/await 確保登入流程完成後再啟動系統，避免時序錯誤。
+            async function performAuth() {
+                try {
+                    // 1. Try Custom Token Sign-in
+                    const userCredential = await signInWithCustomToken(auth, initialAuthToken);
+                    currentUserId = userCredential.user.uid;
+                    console.log("Signed in with custom token successfully.");
+                } catch (customTokenError) {
+                    // 如果自定義 Token 登入失敗，嘗試匿名登入作為後備方案。
+                    console.warn("Custom Token Sign-in failed, attempting anonymous fallback.");
+                    
+                    try {
+                        // 2. Fallback to Anonymous Sign-in
+                        const userCredential = await signInAnonymously(auth);
+                        currentUserId = userCredential.user.uid;
+                        console.log("Signed in anonymously successfully (Fallback).");
+                    } catch (anonymousError) {
+                        console.error("Anonymous Sign-in failed, Authentication FAILED.", anonymousError);
+                        throw new Error("Final Auth Failure.");
+                    }
+                }
+                
+                // 3. Update UI and mark ready (guaranteed to run after successful sign-in)
+                document.getElementById('user-id-display').textContent = currentUserId;
+                isAuthReady = true;
+                console.log("Firebase Auth is now fully READY.");
+
+                // 4. Proceed with system initialization
+                await initializeSystem(true);
+            }
+
+            // Start the sequential process
+            performAuth().catch(e => {
+                 console.error("System failed to initialize due to critical auth failure:", e);
+                 document.getElementById('user-id-display').textContent = 'Error: Auth Failed';
+                 isAuthReady = true; // Still mark ready to let non-db functions run
+                 initializeSystem(false); // Run init without DB features
+            });
+
+        } else {
+            console.error("Firebase Config or initialAuthToken is missing. Cannot initialize Firestore features.");
+            document.getElementById('user-id-display').textContent = 'Error: Missing Config/Token';
+            // 執行非資料庫相關的初始化
+            initializeSystem(false);
+        }
+
+        // =================================================================
+        // 2. 應用程式核心資料與狀態
+        // =================================================================
+
+        // 專案經理列表 (Project Managers)
+        const projectManagers = ["蔡雅雯", "陳乃菁", "吳曉琪", "蘇琬淳", "楊穎潔"];
+
+        // 專案假資料 (Project Mock Data, Based on 深耕計畫核定總表_永康.csv snippet)
+        const allProjects = [
+            { id: "D_9401-A1", title: "行政管理組_會計流程優化", proposer: "會計室/徐亞蘭 主任", manager: "蔡雅雯", progress: 95, status: "已簽核 (等待驗收)", budget: 600000, manpower: 1, type: "行政" },
+            { id: "D_9401-A2", title: "行政管理組_人資流程優化", proposer: "人資處/李敏禎 主任", manager: "蔡雅雯", progress: 80, status: "進行中 (文件修正)", budget: 600000, manpower: 1, type: "行政" },
+            { id: "D_9401-C1", title: "合作醫院專案_護理人力盤點", proposer: "柳營7/佳里6/永榮1...", manager: "陳乃菁", progress: 65, status: "進行中 (數據分析)", budget: 12944012, manpower: 19, type: "醫療" },
+            { id: "D4-O2-2-1", title: "原鄉健康共學-南迴地區家庭式健康促進", proposer: "柳營, 黃文聰副院長", manager: "楊穎潔", progress: 50, status: "規劃中 (排程確認)", budget: 2500000, manpower: 1, type: "社區" },
+            { id: "D1-O3-1", title: "管制藥智慧櫃與智慧調劑台導入", proposer: "藥劑部", manager: "吳曉琪", progress: 98, status: "已完成 (待結案)", budget: 8000000, manpower: 0, type: "設備" },
+            { id: "D3-O1-1", title: "智慧醫療結合健康照護系統開發", proposer: "醫療事務室", manager: "蘇琬淳", progress: 60, status: "開發中 (系統測試)", budget: 500000, manpower: 1, type: "資訊" },
+            { id: "D2-O5-1", title: "健康促進及慢性病預防計畫", proposer: "預防醫學科", manager: "陳乃菁", progress: 30, status: "規劃中 (文件準備)", budget: 700000, manpower: 2, type: "健康" },
+            { id: "D4-O1-1-1", title: "熱區導向雙軌篩檢-鎖定高風險區域", proposer: "腎臟科/江銘彥 醫師", manager: "楊穎潔", progress: 15, status: "待啟動 (人力招募)", budget: 500000, manpower: 1, type: "篩檢" },
+        ];
+
+        // 應用程式狀態
+        let currentView = 'dashboard';
+        let tasks = []; // 儲存從 Firestore 獲取的任務列表
+
+        // =================================================================
+        // 3. 核心功能與視圖渲染
+        // =================================================================
+
+        /**
+         * 自定義模態視窗 (取代 alert/confirm)
+         * @param {string} title - 標題
+         * @param {string} message - 訊息內容
+         */
+        function showModal(title, message) {
+            document.getElementById('modal-title').textContent = title;
+            document.getElementById('modal-message').innerHTML = message;
+            document.getElementById('modal-confirm-btn').onclick = () => {
+                const modal = document.getElementById('custom-modal');
+                const wrapper = document.getElementById('modal-content-wrapper');
+                wrapper.classList.remove('scale-100', 'opacity-100');
+                wrapper.classList.add('scale-95', 'opacity-0');
+                setTimeout(() => modal.classList.add('hidden'), 300);
+            };
+            const modal = document.getElementById('custom-modal');
+            const wrapper = document.getElementById('modal-content-wrapper');
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+            setTimeout(() => {
+                wrapper.classList.remove('scale-95', 'opacity-0');
+                wrapper.classList.add('scale-100', 'opacity-100');
+            }, 50);
+        }
+
+        /**
+         * 渲染主儀表板 (專案儀表板)
+         */
+        function renderDashboard() {
+            const container = document.getElementById('main-content');
+            
+            // 1. 概覽卡片數據計算
+            const totalProjects = allProjects.length;
+            const completedProjects = allProjects.filter(p => p.progress >= 95).length;
+            const totalBudget = allProjects.reduce((sum, p) => sum + p.budget, 0);
+
+            // 2. 儀表板 HTML 結構
+            container.innerHTML = `
+                <h2 class="text-3xl font-bold text-gray-800 mb-6 border-b pb-2">專案儀表板</h2>
+                
+                <!-- 概覽卡片區 -->
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+                    <div class="project-card bg-white p-6 rounded-xl shadow-lg border-t-4 border-primary-blue">
+                        <div class="flex items-center justify-between">
+                            <i data-lucide="layers" class="w-8 h-8 text-primary-blue"></i>
+                            <span class="text-3xl font-extrabold text-gray-900">${totalProjects}</span>
+                        </div>
+                        <p class="text-gray-500 mt-2">總專案數</p>
+                    </div>
+                    <div class="project-card bg-white p-6 rounded-xl shadow-lg border-t-4 border-secondary-green">
+                        <div class="flex items-center justify-between">
+                            <i data-lucide="check-circle" class="w-8 h-8 text-secondary-green"></i>
+                            <span class="text-3xl font-extrabold text-gray-900">${completedProjects}</span>
+                        </div>
+                        <p class="text-gray-500 mt-2">接近完成專案數</p>
+                    </div>
+                    <div class="project-card bg-white p-6 rounded-xl shadow-lg border-t-4 border-accent-orange">
+                        <div class="flex items-center justify-between">
+                            <i data-lucide="wallet" class="w-8 h-8 text-accent-orange"></i>
+                            <span class="text-xl font-extrabold text-gray-900">$${totalBudget.toLocaleString()}</span>
+                        </div>
+                        <p class="text-gray-500 mt-2">總預算概算 (NTD)</p>
+                    </div>
+                </div>
+
+                <!-- 專案列表與進度 (核心儀表) -->
+                <div class="bg-white p-6 rounded-xl shadow-lg mb-8">
+                    <h3 class="text-xl font-semibold text-gray-800 mb-4">所有專案概覽</h3>
+                    <div class="overflow-x-auto">
+                        <table class="min-w-full divide-y divide-gray-200">
+                            <thead class="bg-gray-50">
+                                <tr>
+                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">編號/名稱</th>
+                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">專案管理人</th>
+                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">進度</th>
+                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">即時狀態</th>
+                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">操作</th>
+                                </tr>
+                            </thead>
+                            <tbody class="bg-white divide-y divide-gray-200">
+                                ${allProjects.map(p => `
+                                    <tr>
+                                        <td class="px-4 py-4 whitespace-nowrap text-sm font-medium text-primary-blue hover:underline cursor-pointer" onclick="setView('details', '${p.id}')">
+                                            <div class="text-xs text-gray-500">${p.id}</div>
+                                            ${p.title}
+                                        </td>
+                                        <td class="px-4 py-4 whitespace-nowrap text-sm text-gray-800">${p.manager}</td>
+                                        <td class="px-4 py-4 whitespace-nowrap text-sm">
+                                            <div class="w-32 bg-gray-200 rounded-full h-2.5">
+                                                <div class="progress-bar h-2.5 rounded-full ${p.progress >= 95 ? 'bg-secondary-green' : p.progress < 50 ? 'bg-accent-orange' : 'bg-primary-blue'}" style="width: ${p.progress}%;"></div>
+                                            </div>
+                                            <span class="text-xs text-gray-500 mt-1">${p.progress}%</span>
+                                        </td>
+                                        <td class="px-4 py-4 whitespace-nowrap text-sm">
+                                            <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${p.progress >= 95 ? 'bg-secondary-green/10 text-secondary-green' : p.progress < 50 ? 'bg-red-100 text-red-800' : 'bg-yellow-100 text-yellow-800'}">
+                                                ${p.status}
+                                            </span>
+                                        </td>
+                                        <td class="px-4 py-4 whitespace-nowrap text-sm">
+                                            <button onclick="setView('details', '${p.id}')" class="text-primary-blue hover:text-blue-700 text-sm">
+                                                查看詳情
+                                            </button>
+                                        </td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- 互動式串接表單 (即時更新/問題回報) -->
+                <div class="bg-white p-6 rounded-xl shadow-lg">
+                    <h3 class="text-xl font-semibold text-gray-800 mb-4 flex items-center">
+                        <i data-lucide="send" class="w-5 h-5 mr-2 text-primary-blue"></i>
+                        即時更新/問題回報 (串接表單)
+                    </h3>
+                    <form id="integration-form" class="space-y-4">
+                        <div>
+                            <label for="update-project-id" class="block text-sm font-medium text-gray-700">選擇專案</label>
+                            <select id="update-project-id" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-blue focus:ring focus:ring-primary-blue/50 p-2 border">
+                                ${allProjects.map(p => `<option value="${p.id}">${p.id} - ${p.title}</option>`).join('')}
+                            </select>
+                        </div>
+                        <div>
+                            <label for="update-manager" class="block text-sm font-medium text-gray-700">負責人</label>
+                            <select id="update-manager" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-blue focus:ring focus:ring-primary-blue/50 p-2 border">
+                                ${projectManagers.map(m => `<option value="${m}">${m}</option>`).join('')}
+                            </select>
+                        </div>
+                        <div>
+                            <label for="update-message" class="block text-sm font-medium text-gray-700">更新/問題描述</label>
+                            <textarea id="update-message" rows="3" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-blue focus:ring focus:ring-primary-blue/50 p-2 border" placeholder="請輸入即時更新內容或遇到的問題..."></textarea>
+                        </div>
+                        <button type="submit" class="w-full inline-flex justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-lg text-white bg-accent-orange hover:bg-orange-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-accent-orange">
+                            提交更新
+                        </button>
+                    </form>
+                    <div id="update-feedback" class="mt-4 text-sm font-medium"></div>
+                </div>
+            `;
+            
+            // 初始化 Lucide 圖標
+            lucide.createIcons();
+
+            // 綁定表單提交事件 (模擬即時更新提交到 Firestore 的 logic)
+            document.getElementById('integration-form').addEventListener('submit', async (e) => {
+                e.preventDefault();
+                const projectId = document.getElementById('update-project-id').value;
+                const manager = document.getElementById('update-manager').value;
+                const message = document.getElementById('update-message').value;
+                const feedback = document.getElementById('update-feedback');
+
+                if (!message || !projectId) {
+                    feedback.className = 'mt-4 text-sm font-medium text-red-500';
+                    feedback.textContent = '請填寫完整的更新訊息。';
+                    return;
+                }
+
+                if (db && isAuthReady) { // 增加 isAuthReady 檢查
+                    try {
+                        // 將更新作為一個特殊的 "任務" 記錄到 Firestore
+                        const docRef = await addDoc(collection(db, TASKS_COLLECTION_PATH), {
+                            projectId: projectId,
+                            taskName: `即時更新: ${message.substring(0, 30)}...`,
+                            description: message,
+                            assignee: manager,
+                            dueDate: new Date().toISOString().split('T')[0], // 以當前日期作為期限
+                            status: '更新', // 使用 '更新' 狀態標記
+                            createdAt: serverTimestamp(),
+                            reporterId: currentUserId
+                        });
+                        feedback.className = 'mt-4 text-sm font-medium text-secondary-green';
+                        feedback.textContent = `成功提交更新 (ID: ${docRef.id})。請至任務管理頁面查看。`;
+                        document.getElementById('integration-form').reset();
+                    } catch (e) {
+                        console.error("Error adding document: ", e);
+                        feedback.className = 'mt-4 text-sm font-medium text-red-500';
+                        feedback.textContent = '提交更新失敗：資料庫錯誤。';
+                    }
+                } else {
+                    feedback.className = 'mt-4 text-sm font-medium text-yellow-600';
+                    feedback.textContent = '資料庫未連接或認證尚未完成，無法提交。';
+                    // document.getElementById('integration-form').reset(); // 移除這行避免誤導使用者
+                }
+            });
+        }
+
+        /**
+         * 渲染專案詳情頁面 (Project Details)
+         * @param {string} projectId - 專案 ID
+         */
+        function renderProjectDetails(projectId) {
+            const project = allProjects.find(p => p.id === projectId);
+            const container = document.getElementById('main-content');
+            
+            if (!project) {
+                container.innerHTML = `<h2 class="text-2xl font-bold text-red-600">專案 ${projectId} 找不到。</h2>`;
+                return;
+            }
+
+            // 過濾出與此專案相關的任務
+            const projectTasks = tasks.filter(t => t.projectId === projectId);
+            
+            container.innerHTML = `
+                <h2 class="text-3xl font-bold text-gray-800 mb-6 border-b pb-2 flex items-center">
+                    <i data-lucide="clipboard-list" class="w-7 h-7 mr-3 text-primary-blue"></i>
+                    專案詳情: ${project.title}
+                </h2>
+                
+                <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
+                    <!-- 基本資訊卡片 -->
+                    <div class="lg:col-span-1 bg-white p-6 rounded-xl shadow-lg space-y-3">
+                        <h3 class="text-xl font-semibold text-primary-blue mb-4 border-b pb-2">基本資訊</h3>
+                        <p class="text-sm"><strong class="text-gray-600">專案編號:</strong> ${project.id}</p>
+                        <p class="text-sm"><strong class="text-gray-600">提案單位:</strong> ${project.proposer}</p>
+                        <p class="text-sm"><strong class="text-gray-600">專案管理人:</strong> <span class="text-lg font-bold text-secondary-green">${project.manager}</span></p>
+                        <p class="text-sm"><strong class="text-gray-600">預算概算:</strong> $${project.budget.toLocaleString()}</p>
+                        <p class="text-sm"><strong class="text-gray-600">人力需求:</strong> ${project.manpower} 位</p>
+                    </div>
+
+                    <!-- 流程進度與文件 -->
+                    <div class="lg:col-span-2 bg-white p-6 rounded-xl shadow-lg">
+                        <h3 class="text-xl font-semibold text-primary-blue mb-4 border-b pb-2">流程進度與相關文件</h3>
+                        <div class="flex items-center space-x-4 mb-4">
+                            <span class="text-gray-600 font-medium">總進度:</span>
+                            <div class="flex-grow bg-gray-200 rounded-full h-4">
+                                <div class="progress-bar h-4 rounded-full ${project.progress >= 95 ? 'bg-secondary-green' : project.progress < 50 ? 'bg-accent-orange' : 'bg-primary-blue'}" style="width: ${project.progress}%;"></div>
+                            </div>
+                            <span class="font-bold text-lg ${project.progress >= 95 ? 'text-secondary-green' : 'text-primary-blue'}">${project.progress}%</span>
+                        </div>
+                        
+                        <div class="space-y-2 mt-6">
+                            <h4 class="text-md font-semibold text-gray-700">任務與流程狀態</h4>
+                            <p class="text-sm text-gray-600">目前狀態: <span class="font-medium text-lg text-red-500">${project.status}</span></p>
+                            
+                            <h4 class="text-md font-semibold text-gray-700 mt-4">相關文件 (模擬)</h4>
+                            <ul class="list-disc list-inside text-sm text-primary-blue space-y-1 ml-4">
+                                <li><a href="#" class="hover:underline">深耕計畫核定總表 (${project.id}).xlsx</a></li>
+                                <li><a href="#" class="hover:underline">立案簽呈文件.pdf</a></li>
+                                <li><a href="#" class="hover:underline">階段性報告 v3.docx</a></li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 任務列表 -->
+                <div class="bg-white p-6 rounded-xl shadow-lg">
+                    <h3 class="text-xl font-semibold text-gray-800 mb-4 flex items-center">
+                        <i data-lucide="list-checks" class="w-5 h-5 mr-2 text-primary-blue"></i>
+                        專案任務列表
+                    </h3>
+                    <div id="project-tasks-list">
+                        ${projectTasks.length > 0 ? projectTasks.map(t => `
+                            <div class="flex items-center justify-between p-3 border-b hover:bg-gray-50">
+                                <div class="flex-grow">
+                                    <p class="font-medium text-gray-800">${t.taskName}</p>
+                                    <p class="text-xs text-gray-500">負責人: ${t.assignee} | 期限: ${t.dueDate}</p>
+                                </div>
+                                <span class="px-2 py-1 text-xs font-medium rounded-full ${t.status === '完成' ? 'bg-secondary-green/20 text-secondary-green' : t.status === '進行中' ? 'bg-yellow-100 text-yellow-800' : t.status === '更新' ? 'bg-blue-100 text-blue-800' : 'bg-red-100 text-red-800'}">
+                                    ${t.status}
+                                </span>
+                            </div>
+                        `).join('') : '<p class="text-gray-500 text-center py-4">此專案目前沒有建立的任務。</p>'}
+                    </div>
+                    <button onclick="setView('tasks')" class="mt-4 text-sm text-primary-blue hover:underline flex items-center">
+                        前往任務管理頁面新增任務 <i data-lucide="arrow-right" class="w-4 h-4 ml-1"></i>
+                    </button>
+                </div>
+            `;
+            lucide.createIcons();
+        }
+
+        /**
+         * 渲染任務管理頁面 (Task Management)
+         */
+        function renderTaskManagement() {
+            const container = document.getElementById('main-content');
+            
+            container.innerHTML = `
+                <h2 class="text-3xl font-bold text-gray-800 mb-6 border-b pb-2 flex items-center">
+                    <i data-lucide="clipboard-check" class="w-7 h-7 mr-3 text-primary-blue"></i>
+                    任務管理中心
+                </h2>
+
+                <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                    <!-- 任務分配表單 -->
+                    <div class="lg:col-span-1 bg-white p-6 rounded-xl shadow-lg h-fit">
+                        <h3 class="text-xl font-semibold text-gray-800 mb-4 border-b pb-2">分配新任務</h3>
+                        <form id="new-task-form" class="space-y-4">
+                            <div>
+                                <label for="task-project-id" class="block text-sm font-medium text-gray-700">所屬專案</label>
+                                <select id="task-project-id" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-blue focus:ring focus:ring-primary-blue/50 p-2 border">
+                                    ${allProjects.map(p => `<option value="${p.id}">${p.id} - ${p.title}</option>`).join('')}
+                                </select>
+                            </div>
+                            <div>
+                                <label for="task-name" class="block text-sm font-medium text-gray-700">任務名稱</label>
+                                <input type="text" id="task-name" required class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-blue focus:ring focus:ring-primary-blue/50 p-2 border" placeholder="e.g. 設備採購文件準備">
+                            </div>
+                            <div>
+                                <label for="task-assignee" class="block text-sm font-medium text-gray-700">分配給</label>
+                                <select id="task-assignee" required class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-blue focus:ring focus:ring-primary-blue/50 p-2 border">
+                                    ${projectManagers.map(m => `<option value="${m}">${m}</option>`).join('')}
+                                </select>
+                            </div>
+                            <div>
+                                <label for="task-due-date" class="block text-sm font-medium text-gray-700">截止日期</label>
+                                <input type="date" id="task-due-date" required class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-blue focus:ring focus:ring-primary-blue/50 p-2 border">
+                            </div>
+                            <button type="submit" class="w-full inline-flex justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-lg text-white bg-primary-blue hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-blue">
+                                分配任務
+                            </button>
+                        </form>
+                        <div id="task-form-feedback" class="mt-4 text-sm font-medium"></div>
+                    </div>
+
+                    <!-- 任務列表與過濾 -->
+                    <div class="lg:col-span-2 bg-white p-6 rounded-xl shadow-lg">
+                        <h3 class="text-xl font-semibold text-gray-800 mb-4 border-b pb-2">所有任務追蹤</h3>
+                        
+                        <!-- 任務過濾器 -->
+                        <div class="flex space-x-3 mb-4 text-sm">
+                            <select id="task-filter-manager" class="rounded-md border-gray-300 p-2 border">
+                                <option value="">所有負責人</option>
+                                ${projectManagers.map(m => `<option value="${m}">${m}</option>`).join('')}
+                            </select>
+                            <select id="task-filter-status" class="rounded-md border-gray-300 p-2 border">
+                                <option value="">所有狀態</option>
+                                <option value="待辦">待辦</option>
+                                <option value="進行中">進行中</option>
+                                <option value="完成">完成</option>
+                                <option value="更新">即時更新</option>
+                            </select>
+                            <button onclick="renderTaskList()" class="px-3 py-2 bg-gray-100 rounded-lg text-gray-700 hover:bg-gray-200">
+                                過濾
+                            </button>
+                        </div>
+                        
+                        <!-- 任務實際列表 -->
+                        <div id="current-tasks-list" class="space-y-2">
+                            <!-- 任務列表將由 renderTaskList 渲染 -->
+                        </div>
+                    </div>
+                </div>
+            `;
+            lucide.createIcons();
+            
+            // 綁定表單提交事件
+            document.getElementById('new-task-form').addEventListener('submit', handleNewTaskSubmission);
+            
+            // 首次渲染任務列表
+            renderTaskList();
+        }
+
+        /**
+         * 處理新增任務提交
+         */
+        async function handleNewTaskSubmission(e) {
+            e.preventDefault();
+            if (!db || !isAuthReady) {
+                showModal('錯誤', '資料庫未連線或認證尚未完成，無法新增任務。');
+                return;
+            }
+
+            const projectId = document.getElementById('task-project-id').value;
+            const taskName = document.getElementById('task-name').value;
+            const assignee = document.getElementById('task-assignee').value;
+            const dueDate = document.getElementById('task-due-date').value;
+            const feedback = document.getElementById('task-form-feedback');
+
+            try {
+                await addDoc(collection(db, TASKS_COLLECTION_PATH), {
+                    projectId: projectId,
+                    taskName: taskName,
+                    assignee: assignee,
+                    dueDate: dueDate,
+                    status: '待辦',
+                    createdAt: serverTimestamp(),
+                    reporterId: currentUserId
+                });
+                feedback.className = 'mt-4 text-sm font-medium text-secondary-green';
+                feedback.textContent = '任務分配成功！';
+                document.getElementById('new-task-form').reset();
+            } catch (e) {
+                console.error("Error adding document: ", e);
+                feedback.className = 'mt-4 text-sm font-medium text-red-500';
+                feedback.textContent = '任務分配失敗：資料庫錯誤。';
+            }
+        }
+
+        /**
+         * 渲染過濾後的任務列表
+         */
+        function renderTaskList() {
+            const listContainer = document.getElementById('current-tasks-list');
+            if (!listContainer) return; // 確保在正確的頁面
+            
+            const filterManager = document.getElementById('task-filter-manager')?.value || '';
+            const filterStatus = document.getElementById('task-filter-status')?.value || '';
+
+            const filteredTasks = tasks.filter(t => 
+                (!filterManager || t.assignee === filterManager) &&
+                (!filterStatus || t.status === filterStatus)
+            ).sort((a, b) => {
+                // 待辦優先，日期較早優先
+                if (a.status === '待辦' && b.status !== '待辦') return -1;
+                if (a.status !== '待辦' && b.status === '待辦') return 1;
+                return new Date(a.dueDate) - new Date(b.dueDate);
+            });
+
+            if (filteredTasks.length === 0) {
+                listContainer.innerHTML = '<p class="text-gray-500 text-center py-8">沒有符合過濾條件的任務。</p>';
+                return;
+            }
+            
+            listContainer.innerHTML = filteredTasks.map(t => {
+                const project = allProjects.find(p => p.id === t.projectId);
+                let badgeClass = 'bg-gray-100 text-gray-700';
+                let actionText = '標記完成';
+                let actionFn = `updateTaskStatus('${t.id}', '完成')`;
+
+                if (t.status === '待辦') {
+                    badgeClass = 'bg-red-100 text-red-800';
+                    actionText = '開始進行';
+                    actionFn = `updateTaskStatus('${t.id}', '進行中')`;
+                } else if (t.status === '進行中') {
+                    badgeClass = 'bg-yellow-100 text-yellow-800';
+                } else if (t.status === '完成') {
+                    badgeClass = 'bg-secondary-green/20 text-secondary-green';
+                    actionText = '已完成';
+                    actionFn = `showModal('已完成', '此任務已標記完成，無法再操作。');`;
+                } else if (t.status === '更新') {
+                     badgeClass = 'bg-blue-100 text-blue-800';
+                     actionText = '查看詳情';
+                     actionFn = `setView('details', '${t.projectId}')`;
+                }
+
+                return `
+                    <div class="project-card bg-gray-50 p-4 rounded-lg border-l-4 ${t.status === '待辦' ? 'border-red-500' : t.status === '進行中' ? 'border-yellow-500' : t.status === '完成' ? 'border-secondary-green' : 'border-blue-500'}">
+                        <div class="flex justify-between items-start">
+                            <div class="flex-grow">
+                                <p class="font-bold text-lg text-gray-900">${t.taskName}</p>
+                                <p class="text-xs text-gray-500">專案: <span class="font-medium text-primary-blue cursor-pointer hover:underline" onclick="setView('details', '${t.projectId}')">${project ? project.title : '未知專案'}</span></p>
+                            </div>
+                            <span class="px-3 py-1 text-xs font-semibold rounded-full ${badgeClass}">${t.status}</span>
+                        </div>
+                        <div class="mt-2 text-sm text-gray-700 flex justify-between items-center">
+                            <p>
+                                <i data-lucide="user" class="w-4 h-4 inline mr-1"></i>
+                                負責人: <span class="font-medium">${t.assignee}</span>
+                                <span class="ml-4">
+                                    <i data-lucide="calendar" class="w-4 h-4 inline mr-1"></i>
+                                    期限: ${t.dueDate}
+                                </span>
+                            </p>
+                            ${t.status !== '更新' ? 
+                                `<button onclick="${actionFn}" class="px-3 py-1 text-xs rounded-lg text-white bg-secondary-green hover:bg-green-700">
+                                    ${actionText}
+                                </button>` 
+                                : 
+                                `<button onclick="${actionFn}" class="px-3 py-1 text-xs rounded-lg text-white bg-blue-600 hover:bg-blue-700">
+                                    ${actionText}
+                                </button>`
+                            }
+                            
+                        </div>
+                    </div>
+                `;
+            }).join('');
+            lucide.createIcons();
+        }
+
+        /**
+         * 更新任務狀態
+         * @param {string} taskId - 任務文檔 ID
+         * @param {string} newStatus - 新狀態 ('進行中' 或 '完成')
+         */
+        async function updateTaskStatus(taskId, newStatus) {
+            if (!db || !isAuthReady) {
+                showModal('錯誤', '資料庫未連線或認證尚未完成，無法更新任務狀態。');
+                return;
+            }
+            try {
+                const taskRef = doc(db, TASKS_COLLECTION_PATH, taskId);
+                await updateDoc(taskRef, {
+                    status: newStatus,
+                    updatedAt: serverTimestamp()
+                });
+                showModal('成功', `任務已更新為 [${newStatus}]。`);
+                // onSnapshot 會自動更新列表
+            } catch (e) {
+                console.error("Error updating document: ", e);
+                showModal('錯誤', `更新任務失敗：${e.message}`);
+            }
+        }
+
+        /**
+         * 渲染報告與下載頁面 (Reporting & Download)
+         */
+        function renderReporting() {
+            const container = document.getElementById('main-content');
+            
+            // 報告數據 (基於 allProjects 和 tasks)
+            const managerReport = projectManagers.map(manager => {
+                const managedProjects = allProjects.filter(p => p.manager === manager);
+                const managerTasks = tasks.filter(t => t.assignee === manager);
+                const completedTasks = managerTasks.filter(t => t.status === '完成').length;
+                
+                return {
+                    manager,
+                    managedProjectsCount: managedProjects.length,
+                    avgProgress: managedProjects.length > 0 
+                        ? (managedProjects.reduce((sum, p) => sum + p.progress, 0) / managedProjects.length).toFixed(1) 
+                        : 0,
+                    totalTasks: managerTasks.length,
+                    completedTasks: completedTasks,
+                    taskCompletionRate: managerTasks.length > 0 
+                        ? ((completedTasks / managerTasks.length) * 100).toFixed(1) 
+                        : 0
+                };
+            });
+
+            container.innerHTML = `
+                <h2 class="text-3xl font-bold text-gray-800 mb-6 border-b pb-2 flex items-center">
+                    <i data-lucide="trending-up" class="w-7 h-7 mr-3 text-primary-blue"></i>
+                    專案報告與下載
+                </h2>
+
+                <div class="bg-white p-6 rounded-xl shadow-lg mb-8">
+                    <h3 class="text-xl font-semibold text-gray-800 mb-4 border-b pb-2">專案經理績效概覽</h3>
+                    <div class="overflow-x-auto">
+                        <table class="min-w-full divide-y divide-gray-200">
+                            <thead class="bg-gray-50">
+                                <tr>
+                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">專案經理</th>
+                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">負責專案數</th>
+                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">平均專案進度 (%)</th>
+                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">總任務數</th>
+                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">任務完成率 (%)</th>
+                                </tr>
+                            </thead>
+                            <tbody class="bg-white divide-y divide-gray-200">
+                                ${managerReport.map(r => `
+                                    <tr class="hover:bg-gray-50">
+                                        <td class="px-4 py-4 whitespace-nowrap text-sm font-medium text-gray-900">${r.manager}</td>
+                                        <td class="px-4 py-4 whitespace-nowrap text-sm">${r.managedProjectsCount}</td>
+                                        <td class="px-4 py-4 whitespace-nowrap text-sm text-primary-blue">${r.avgProgress}%</td>
+                                        <td class="px-4 py-4 whitespace-nowrap text-sm">${r.totalTasks}</td>
+                                        <td class="px-4 py-4 whitespace-nowrap text-sm text-secondary-green font-bold">${r.taskCompletionRate}%</td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                
+                <!-- 下載功能區 -->
+                <div class="bg-white p-6 rounded-xl shadow-lg">
+                    <h3 class="text-xl font-semibold text-gray-800 mb-4 border-b pb-2">報告下載</h3>
+                    <div class="space-y-4">
+                        <div class="flex items-center space-x-4">
+                            <button id="download-progress-btn" class="flex items-center px-4 py-2 bg-secondary-green text-white rounded-lg hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-secondary-green">
+                                <i data-lucide="download" class="w-5 h-5 mr-2"></i>
+                                下載專案進度總表 (CSV)
+                            </button>
+                            <span class="text-sm text-gray-500">包含所有專案的基本資訊與進度。</span>
+                        </div>
+                        <div class="flex items-center space-x-4">
+                            <button id="download-tasks-btn" class="flex items-center px-4 py-2 bg-primary-blue text-white rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-blue">
+                                <i data-lucide="download" class="w-5 h-5 mr-2"></i>
+                                下載所有任務清單 (CSV)
+                            </button>
+                            <span class="text-sm text-gray-500">包含所有任務的狀態、負責人與截止日期。</span>
+                        </div>
+                    </div>
+                </div>
+            `;
+            lucide.createIcons();
+            
+            // 綁定下載事件
+            document.getElementById('download-progress-btn').addEventListener('click', () => downloadReportCSV(allProjects, ['id', 'title', 'manager', 'progress', 'status', 'budget', 'manpower'], ['編號', '名稱', '管理人', '進度(%)', '狀態', '預算', '人力數'], '專案進度總表'));
+            document.getElementById('download-tasks-btn').addEventListener('click', () => downloadReportCSV(tasks, ['projectId', 'taskName', 'assignee', 'dueDate', 'status', 'createdAt'], ['專案編號', '任務名稱', '負責人', '截止日期', '狀態', '建立時間'], '任務清單'));
+        }
+
+        /**
+         * 產生並下載 CSV 檔案
+         * @param {Array<Object>} data - 要下載的數據
+         * @param {Array<string>} keys - 數據對象中的鍵 (英文)
+         * @param {Array<string>} headers - CSV 的標題 (中文)
+         * @param {string} filename - 檔案名稱
+         */
+        function downloadReportCSV(data, keys, headers, filename) {
+            if (data.length === 0) {
+                showModal('錯誤', '沒有數據可以下載。');
+                return;
+            }
+
+            // 處理標題行 (加入 BOM 以確保 Excel 正確顯示中文)
+            let csv = '\ufeff' + headers.join(',') + '\n';
+            
+            // 處理數據行
+            data.forEach(item => {
+                const row = keys.map(key => {
+                    let value = item[key] !== undefined && item[key] !== null ? item[key] : '';
+                    
+                    // 確保逗號和換行符號被正確處理
+                    if (typeof value === 'string' && (value.includes(',') || value.includes('\n'))) {
+                        value = `"${value.replace(/"/g, '""')}"`;
+                    }
+                    
+                    // 處理日期格式 (Firestore Timestamp)
+                    if (key === 'createdAt' && typeof value.toDate === 'function') {
+                        value = value.toDate().toLocaleString('zh-TW');
+                    }
+                    
+                    return value;
+                }).join(',');
+                csv += row + '\n';
+            });
+
+            const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement("a");
+            const url = URL.createObjectURL(blob);
+            link.setAttribute("href", url);
+            link.setAttribute("download", `${filename}_${new Date().toISOString().split('T')[0]}.csv`);
+            link.style.visibility = 'hidden';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            
+            showModal('下載完成', `${filename} 已成功產生並開始下載。`);
+        }
+
+        // =================================================================
+        // 4. 系統初始化與導航
+        // =================================================================
+
+        /**
+         * 設定當前視圖並更新導航欄
+         * @param {string} viewName - 視圖名稱 ('dashboard', 'details', 'tasks', 'report')
+         * @param {string} [projectId] - 專案 ID (僅適用於 details 視圖)
+         */
+        window.setView = function(viewName, projectId = null) {
+            currentView = viewName;
+            
+            // 更新導航欄樣式
+            document.querySelectorAll('.nav-item').forEach(item => {
+                item.classList.remove('active');
+            });
+            document.getElementById(`nav-${viewName}`).classList.add('active');
+
+            // 渲染對應視圖
+            switch (viewName) {
+                case 'dashboard':
+                    renderDashboard();
+                    break;
+                case 'details':
+                    renderProjectDetails(projectId || allProjects[0].id); // 預設顯示第一個專案
+                    break;
+                case 'tasks':
+                    renderTaskManagement();
+                    break;
+                case 'report':
+                    renderReporting();
+                    break;
+            }
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+
+        /**
+         * 啟動 Firestore 實時監聽
+         */
+        function startTaskListener() {
+            // 只有當 DB 可用、認證完成且監聽尚未啟動時才執行
+            if (!db || !isAuthReady || isListenerStarted) { 
+                return;
+            }
+            
+            isListenerStarted = true; // 設置旗標以防止重複執行
+
+            const tasksQuery = query(collection(db, TASKS_COLLECTION_PATH));
+            
+            onSnapshot(tasksQuery, (snapshot) => {
+                tasks = snapshot.docs.map(doc => ({
+                    id: doc.id,
+                    ...doc.data(),
+                    createdAt: doc.data().createdAt?.toDate()?.toISOString().split('T')[0] || 'N/A' // 簡化日期顯示
+                }));
+                console.log("Tasks updated in real-time:", tasks.length);
+
+                // 如果當前在任務管理或專案詳情頁面，重新渲染
+                if (currentView === 'tasks') {
+                    renderTaskList();
+                } else if (currentView === 'details') {
+                    // 確保重新渲染時保留當前專案ID
+                    // 這裡使用了一個不標準的選擇器，如果 DOM 結構改變可能會失敗
+                    // 使用更安全的查詢方式：
+                    const detailElement = document.getElementById('main-content');
+                    const projectIdText = detailElement.querySelector('p strong.text-gray-600')?.nextSibling?.textContent?.trim();
+                    
+                    // 檢查 currentView 是否為 details，並嘗試重新渲染當前專案
+                    if (projectIdText) {
+                         // 嘗試從 textContent 擷取 ID
+                        const match = projectIdText.match(/[A-Z0-9_\-]+/);
+                        const currentProjectId = match ? match[0] : null;
+
+                        if (currentProjectId) {
+                            renderProjectDetails(currentProjectId);
+                        } else {
+                            console.warn("Could not reliably extract current project ID for re-rendering.");
+                        }
+                    }
+                }
+                
+                // 由於 Firestore 響應是異步的，這裡確保 Lucide Icons 再次創建
+                lucide.createIcons();
+            }, (error) => {
+                console.error("Task listener failed:", error);
+                isListenerStarted = false; // 失敗時重設旗標，也許可以重新嘗試
+            });
+        }
+        
+        /**
+         * 系統初始化主函數
+         */
+        async function initializeSystem(withDb = true) {
+            // 只有在資料庫可用且認證完成時才啟動資料監聽
+            if (withDb && isAuthReady) {
+                startTaskListener();
+            }
+            
+            // 首次渲染儀表板
+            setView('dashboard');
+        }
+        
+        // --- 啟動流程完全依賴 performAuth 函數 ---
+        
+        // 如果 Firebase Config 或 Token 缺失，則只執行非 DB 初始化
+        if (!firebaseConfig || !initialAuthToken) {
+             initializeSystem(false);
+        }
+        
+    </script>
+</body>
+</html>

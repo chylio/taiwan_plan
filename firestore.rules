@@ -1,0 +1,136 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // =====================================================
+    // WHITELIST: Replace these placeholder emails with actual user emails
+    // =====================================================
+    function allowedEmails() {
+      return [
+        'user1@example.com',
+        'user2@example.com',
+        'user3@example.com',
+        'user4@example.com',
+        'user5@example.com',
+        'user6@example.com',
+        'user7@example.com',
+        'user8@example.com'
+      ];
+    }
+    
+    // =====================================================
+    // HELPER VALIDATORS
+    // =====================================================
+    
+    // Check if user is authenticated, email verified, and in whitelist
+    function isAllowedUser() {
+      return request.auth != null 
+        && request.auth.token.email_verified == true
+        && request.auth.token.email in allowedEmails();
+    }
+    
+    // Validate project ID format (alphanumeric, dash, underscore)
+    function isValidProjectId(id) {
+      return id.matches('^[a-zA-Z0-9_-]+$') && id.size() >= 1 && id.size() <= 100;
+    }
+    
+    // Validate progress is a number between 0 and 100
+    function isValidProgress(n) {
+      return n is number && n >= 0 && n <= 100;
+    }
+    
+    // Validate non-empty string
+    function isNonEmptyString(s) {
+      return s is string && s.size() > 0 && s.size() <= 500;
+    }
+    
+    // Validate date string in YYYY-MM-DD format
+    function isValidDateStr(s) {
+      return s is string && s.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$');
+    }
+    
+    // =====================================================
+    // PROJECT VALIDATOR
+    // =====================================================
+    function isValidProject(data) {
+      return data.keys().hasAll(['id', 'title', 'manager', 'budget', 'progress', 'status', 'reporterId'])
+        && isValidProjectId(data.id)
+        && isNonEmptyString(data.title)
+        && isNonEmptyString(data.manager)
+        && data.budget is number && data.budget >= 0
+        && data.personnelBudget is number && data.personnelBudget >= 0
+        && data.operatingBudget is number && data.operatingBudget >= 0
+        && data.equipmentBudget is number && data.equipmentBudget >= 0
+        && isValidProgress(data.progress)
+        && isNonEmptyString(data.status)
+        && isNonEmptyString(data.reporterId);
+    }
+    
+    // =====================================================
+    // TASK VALIDATOR
+    // =====================================================
+    function isValidTask(data) {
+      return data.keys().hasAll(['projectId', 'taskName', 'assignee', 'dueDate', 'status', 'reporterId'])
+        && isValidProjectId(data.projectId)
+        && isNonEmptyString(data.taskName)
+        && isNonEmptyString(data.assignee)
+        && isValidDateStr(data.dueDate)
+        && isNonEmptyString(data.status)
+        && isNonEmptyString(data.reporterId);
+    }
+    
+    // =====================================================
+    // CALENDAR EVENT VALIDATOR
+    // =====================================================
+    function isValidEvent(data) {
+      return data.keys().hasAll(['projectId', 'title', 'assignee', 'startDate', 'endDate', 'reporterId'])
+        && isValidProjectId(data.projectId)
+        && isNonEmptyString(data.title)
+        && isNonEmptyString(data.assignee)
+        && isValidDateStr(data.startDate)
+        && isValidDateStr(data.endDate)
+        && isNonEmptyString(data.reporterId)
+        // Optional description field validation
+        && (!data.keys().hasAny(['description']) || (data.description is string && data.description.size() <= 1000));
+    }
+    
+    // =====================================================
+    // COLLECTION RULES
+    // =====================================================
+    
+    // Project metadata collection
+    match /artifacts/{appId}/public/data/project_metadata/{projectId} {
+      allow read: if isAllowedUser();
+      allow create: if isAllowedUser() && isValidProject(request.resource.data);
+      allow update: if isAllowedUser() && isValidProject(request.resource.data);
+      allow delete: if isAllowedUser() && resource.data.reporterId == request.auth.uid;
+    }
+    
+    // Project tasks collection
+    match /artifacts/{appId}/public/data/project_tasks/{taskId} {
+      allow read: if isAllowedUser();
+      allow create: if isAllowedUser() && isValidTask(request.resource.data);
+      allow update: if isAllowedUser() && isValidTask(request.resource.data);
+      allow delete: if isAllowedUser();
+    }
+    
+    // Calendar events collection
+    match /artifacts/{appId}/public/data/calendar_events/{eventId} {
+      allow read: if isAllowedUser();
+      allow create: if isAllowedUser() && isValidEvent(request.resource.data);
+      allow update: if isAllowedUser() && isValidEvent(request.resource.data);
+      allow delete: if isAllowedUser();
+    }
+    
+    // Settings collection (Teams webhook)
+    match /artifacts/{appId}/public/data/settings/{docId} {
+      allow read: if isAllowedUser();
+      allow write: if isAllowedUser();
+    }
+    
+    // Deny all other paths
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

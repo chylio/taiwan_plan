@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>深耕計畫專案管理儀表板</title>
 
-  <!-- 開發用 CSP（正式請以伺服器 HTTP Header 設定；若嵌入 Teams，請改以 Header 設定 frame-ancestors） -->
+  <!-- 開發用 CSP（正式建議以伺服器 Header 設定） -->
   <meta http-equiv="Content-Security-Policy"
         content="default-src 'self';
                  script-src 'self' 'unsafe-inline' https://www.gstatic.com https://cdn.tailwindcss.com https://unpkg.com https://cdn.jsdelivr.net https://www.google.com;
@@ -17,6 +17,7 @@
                               https://*.googleapis.com
                               https://apis.google.com
                               https://*.gstatic.com
+                              https://accounts.google.com
                               https://firebasestorage.googleapis.com
                               https://content-firebaseappcheck.googleapis.com
                               https://script.google.com
@@ -25,18 +26,19 @@
                               https://*.azure-apim.net;
                  img-src 'self' data: https:;
                  style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net;
-                 frame-src https://www.google.com https://www.gstatic.com;
+                 frame-src https://www.google.com https://www.gstatic.com https://accounts.google.com;
                  object-src 'none';
                  base-uri 'self';">
 
-  <!-- Tailwind / Icons / FullCalendar（釘版本） -->
+  <!-- Tailwind / Icons / FullCalendar -->
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://unpkg.com/lucide@0.469.0/dist/umd/lucide.js"></script>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/main.min.css">
   <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/index.global.min.js"></script>
 
-  <!-- Firebase 組態 -->
+  <!-- 設定區 -->
   <script>
+    // Firebase 組態
     window.__firebase_config_object = {
       apiKey: "AIzaSyCIXWS0ynK4GdsdQIXkOs3fHuzAendZ7LA",
       authDomain: "taiwanplan-f7566.firebaseapp.com",
@@ -45,18 +47,17 @@
       messagingSenderId: "874700126533",
       appId: "1:874700126533:web:5461432d0169b7de6ee62c"
     };
-    // Firestore 路徑的 APP_ID
+    // Firestore APP ID（路徑用）
     window.__app_id = "taiwanplan-f7566";
 
-    // 可選：App Check（如啟用需填入）
-    // window.__app_check_site_key = "YOUR_RECAPTCHA_V3_SITE_KEY";
+    // 登入模式（google | anonymous），此版預設 google
+    window.__auth_mode = "google";
 
-    // 備份到 SharePoint（Power Automate HTTP 觸發 URL）
-    // 將下行替換為你 Flow 的觸發網址
+    // SharePoint（Power Automate HTTP 觸發 URL）— 請替換為你的 Flow URL
     window.__sharepoint_flow_url = "REPLACE_WITH_YOUR_POWER_AUTOMATE_HTTP_TRIGGER_URL";
 
-    // 可選：AI 週/月報（若用 Google Apps Script 端點，填入部署的 Web App URL）
-    window.__ai_summary_webapp_url = "REPLACE_WITH_YOUR_APPS_SCRIPT_WEBAPP_URL";
+    // AI 彙整（Google Apps Script Web App URL）
+    window.__ai_summary_webapp_url = "https://script.google.com/macros/s/AKfycbzBaT08WiuMIpqVNrG70iTVMUFXY1X-1zSn0uKa3xgLa4KdUwFbL5q7xh5OwpJMAblAdQ/exec";
   </script>
 
   <script>
@@ -73,54 +74,77 @@
   <style>
     .project-card{box-shadow:0 4px 6px -1px rgba(0,0,0,.1),0 2px 4px -1px rgba(0,0,0,.06);transition:transform .2s}
     .project-card:hover{transform:translateY(-2px)}
-    .nav-item.active{background-color:#1e40af;color:#fff;border-left:4px solid #f97316}
-    .nav-item{cursor:pointer;transition:all .15s}
     .progress-bar{transition:width .5s ease-in-out}
+
+    /* 側欄樣式：支援展開/收合 */
+    #app-sidebar { overflow: hidden; }
+    #app-sidebar.expanded { width: 240px !important; }
+    #app-sidebar.collapsed { width: 72px !important; }
+
+    #app-sidebar .nav-item{
+      display:flex; align-items:center; gap:.75rem;
+      width:100%; padding:.5rem .5rem; border-radius:.75rem;
+      color:#e5e7eb; transition: background-color .15s, color .15s;
+    }
+    #app-sidebar .nav-item:hover{ background-color: rgba(255,255,255,.08); color:#fff; }
+    #app-sidebar .nav-item.active{ background-color: rgba(59,130,246,.18); color:#fff; }
+    #app-sidebar .nav-icon{ width:22px; height:22px; stroke-width:2.2; }
+    #app-sidebar svg{ stroke: currentColor; }
+
+    #app-sidebar .nav-label{ display:inline; white-space:nowrap; font-weight:600; font-size:.875rem; }
+    #app-sidebar.collapsed .nav-label{ display:none; }
+
+    #app-main{ transition: margin-left .2s ease; }
   </style>
 </head>
 <body class="bg-gray-50 font-sans flex min-h-screen">
 
-  <!-- 側邊導航 -->
-  <aside class="w-64 bg-white shadow-xl flex flex-col fixed h-full z-10">
-    <div class="p-6 border-b border-gray-100">
-      <h1 class="text-2xl font-extrabold text-primary-blue">
-        深耕計畫 <span class="text-secondary-green">PM</span>
-      </h1>
-      <p class="text-xs text-gray-500 mt-1">專案管理中心</p>
+  <!-- 側欄（預設展開有文字，可按漢堡鍵收合為只顯示圖示） -->
+  <aside id="app-sidebar" class="fixed inset-y-2 left-2 z-10 rounded-2xl bg-black text-white shadow-2xl flex flex-col justify-between py-3 transition-all duration-200 expanded" style="width:240px;">
+    <!-- 上：Logo + 漢堡切換 + 導覽 -->
+    <div class="w-full">
+      <div class="flex items-center justify-between px-3 mb-2">
+        <button class="w-10 h-10 rounded-xl bg-gradient-to-br from-pink-500 via-purple-500 to-indigo-500 shadow-md" title="Home" onclick="setView('dashboard')"></button>
+        <button id="btn-toggle" class="p-2 rounded-lg hover:bg-white/10" title="收合/展開" onclick="toggleSidebar()">
+          <i data-lucide="panel-left-close" class="nav-icon"></i>
+        </button>
+      </div>
+      <nav class="w-full flex flex-col items-stretch space-y-1 px-1">
+        <button class="nav-item group" data-view="dashboard" title="Home" onclick="setView('dashboard')">
+          <i data-lucide="house" class="nav-icon"></i><span class="nav-label">Home</span>
+        </button>
+        <button class="nav-item group" data-view="tasks" title="Planner" onclick="setView('tasks')">
+          <i data-lucide="calendar-days" class="nav-icon"></i><span class="nav-label">Planner</span>
+        </button>
+        <button class="nav-item group" data-view="report" title="Brain" onclick="setView('report')">
+          <i data-lucide="brain" class="nav-icon"></i><span class="nav-label">Brain</span>
+        </button>
+        <button class="nav-item group" data-view="community" title="資訊交流" onclick="setView('community')">
+          <i data-lucide="messages-square" class="nav-icon"></i><span class="nav-label">資訊交流</span>
+        </button>
+        <button class="nav-item group" data-view="details" title="專案詳情" onclick="setView('details')">
+          <i data-lucide="layout-dashboard" class="nav-icon"></i><span class="nav-label">專案詳情</span>
+        </button>
+      </nav>
     </div>
-    <nav class="flex-grow p-4 space-y-2">
-      <div id="nav-dashboard" class="nav-item active p-3 rounded-lg text-gray-800 hover:bg-primary-blue hover:text-white flex items-center" onclick="setView('dashboard')">
-        <i data-lucide="layout-dashboard" class="w-5 h-5 mr-3"></i><span class="font-medium">專案儀表板</span>
-      </div>
-      <div id="nav-creation" class="nav-item p-3 rounded-lg text-gray-800 hover:bg-primary-blue hover:text-white flex items-center" onclick="setView('creation')">
-        <i data-lucide="folder-plus" class="w-5 h-5 mr-3"></i><span class="font-medium">新增/編輯專案</span>
-      </div>
-      <div id="nav-details" class="nav-item p-3 rounded-lg text-gray-800 hover:bg-primary-blue hover:text-white flex items-center" onclick="setView('details')">
-        <i data-lucide="folder-open" class="w-5 h-5 mr-3"></i><span class="font-medium">專案詳情（範例）</span>
-      </div>
-      <div id="nav-tasks" class="nav-item p-3 rounded-lg text-gray-800 hover:bg-primary-blue hover:text-white flex items-center" onclick="setView('tasks')">
-        <i data-lucide="check-square" class="w-5 h-5 mr-3"></i><span class="font-medium">任務管理</span>
-      </div>
-      <div id="nav-calendar" class="nav-item p-3 rounded-lg text-gray-800 hover:bg-primary-blue hover:text-white flex items-center" onclick="setView('calendar')">
-        <i data-lucide="calendar" class="w-5 h-5 mr-3"></i><span class="font-medium">行事曆</span>
-      </div>
-      <div id="nav-report" class="nav-item p-3 rounded-lg text-gray-800 hover:bg-primary-blue hover:text-white flex items-center" onclick="setView('report')">
-        <i data-lucide="file-text" class="w-5 h-5 mr-3"></i><span class="font-medium">報告與下載</span>
-      </div>
-      <!-- 注意：已移除「系統設定」導覽項目 -->
-    </nav>
-    <div class="p-4 border-t border-gray-100 text-sm text-gray-600">
-      <p class="text-xs">當前使用者 UID:</p>
-      <p id="user-id-display" class="font-mono text-xs break-all text-primary-blue">連線中...</p>
+
+    <!-- 下：登入/登出 -->
+    <div class="w-full flex flex-col items-stretch space-y-1 px-1">
+      <button id="btn-signin" class="nav-item group" title="使用 Google 登入" onclick="signInWithGoogle()">
+        <i data-lucide="log-in" class="nav-icon"></i><span class="nav-label">登入</span>
+      </button>
+      <button id="btn-signout" class="nav-item group hidden" title="登出" onclick="appSignOut()">
+        <i data-lucide="log-out" class="nav-icon"></i><span class="nav-label">登出</span>
+      </button>
     </div>
   </aside>
 
-  <!-- 主內容 -->
-  <main class="flex-grow ml-64 p-8">
+  <!-- 主內容（margin-left 會依側欄寬度調整） -->
+  <main id="app-main" class="flex-grow p-8" style="margin-left:240px;">
     <div id="main-content" class="w-full"></div>
   </main>
 
-  <!-- 模態 -->
+  <!-- Modal -->
   <div id="custom-modal" class="fixed inset-0 bg-gray-900 bg-opacity-75 z-50 hidden items-center justify-center">
     <div class="bg-white rounded-xl p-6 w-full max-w-sm shadow-2xl transform transition-all duration-300 scale-95 opacity-0" id="modal-content-wrapper">
       <h3 id="modal-title" class="text-xl font-bold mb-4 text-primary-blue">提示</h3>
@@ -135,7 +159,10 @@
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
     import { initializeAppCheck, ReCaptchaV3Provider } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app-check.js";
-    import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+    import {
+      getAuth, onAuthStateChanged, GoogleAuthProvider,
+      signInWithPopup, signInWithRedirect, getRedirectResult, signOut
+    } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
     import {
       getFirestore, doc, addDoc, setDoc, updateDoc, deleteDoc,
       onSnapshot, collection, query, orderBy, serverTimestamp, setLogLevel
@@ -148,14 +175,16 @@
 
     // 全域狀態
     let db, auth, storage;
-    let currentUserId = "initializing";
+    let currentUserId = "";
     let isAuthReady = false;
     let listenersStarted = false;
+    let userProfile = { displayName:"", email:"", photoURL:"" };
 
     // 設定
     const APP_ID = window.__app_id || "default-app-id";
     const firebaseConfig = window.__firebase_config_object || null;
     const APP_CHECK_SITE_KEY = window.__app_check_site_key || "";
+    const AUTH_MODE = (window.__auth_mode || "google").toLowerCase();
 
     const SHAREPOINT_FLOW_URL   = window.__sharepoint_flow_url || "";
     const AI_SUMMARY_WEBAPP_URL = window.__ai_summary_webapp_url || "";
@@ -165,8 +194,9 @@
     const TASKS_COLLECTION_PATH    = `artifacts/${APP_ID}/public/data/project_tasks`;
     const EVENTS_COLLECTION_PATH   = `artifacts/${APP_ID}/public/data/calendar_events`;
     const FILES_COLLECTION_PATH    = `artifacts/${APP_ID}/public/data/project_files`;
-    const SETTINGS_DOC_PATH        = `artifacts/${APP_ID}/public/settings/budget_caps`;
+    const SETTINGS_DOC_PATH        = `artifacts/${APP_ID}/public/settings`; // 偶數段（文件）
     const MANAGERS_COLLECTION_PATH = `artifacts/${APP_ID}/public/settings/project_managers`;
+    const COMMUNITY_COLLECTION_PATH= `artifacts/${APP_ID}/public/community/posts`;
 
     // 人員名單（動態）＋預設
     const DEFAULT_MANAGERS = ["蔡雅雯","陳乃菁","吳曉琪","蘇琬淳","楊穎潔","王小明","李小華","張曉安"];
@@ -178,6 +208,7 @@
     let tasks = [];
     let events = [];
     let files = [];
+    let communityPosts = [];
     let budgetCaps = { personnelCap: 0, operatingCap: 0, equipmentCap: 0 };
     let selectedProjectId = null;
     let calendarInstance = null;
@@ -201,13 +232,6 @@
       modal.classList.remove("hidden"); modal.classList.add("flex");
       setTimeout(()=>{ wrapper.classList.remove("scale-95","opacity-0"); wrapper.classList.add("scale-100","opacity-100"); },50);
     }
-    function isAuthorized(){ return !!(isAuthReady && currentUserId && currentUserId!=="initializing"); }
-    function setActiveNav(id){
-      document.querySelectorAll(".nav-item").forEach(el=>el.classList.remove("active"));
-      const el = document.getElementById(id);
-      if(el) el.classList.add("active");
-      if(window.lucide?.createIcons) lucide.createIcons();
-    }
     function n(v){ return Number(v)||0; }
     function clamp01(x){ return Math.max(0, Math.min(1, x)); }
     function fmtMoney(x){ return `$${(Number(x)||0).toLocaleString()}`; }
@@ -224,7 +248,6 @@
         return "";
       }catch{ return ""; }
     }
-    function inRange(d, s, e){ if(!d) return false; if(s && d < s) return false; if(e && d > e) return false; return true; }
     function overlapsRange(start, end, s, e){
       if(!start && !end) return false;
       const aStart = start || end; const aEnd = end || start;
@@ -233,6 +256,7 @@
       if(!aStart || !aEnd || !bStart || !bEnd) return false;
       return (aStart <= bEnd) && (bStart <= aEnd);
     }
+    function inRange(d, s, e){ if(!d) return false; if(s && d < s) return false; if(e && d > e) return false; return true; }
     function arrayToCsv(headers, rows){
       const esc = (val)=>{ const s = (val===undefined || val===null) ? "" : String(val);
         const needQuote = /[",\r\n]/.test(s); const q = s.replace(/"/g, '""'); return needQuote ? `"${q}"` : q; };
@@ -262,7 +286,7 @@
       }catch(e){ console.warn("notify error", e); }
     }
 
-    // SharePoint（Power Automate）備份：非阻斷；失敗不影響主流程
+    // SharePoint 備份（非阻斷）
     async function backupProjectToSharePoint(p){
       if(!SHAREPOINT_FLOW_URL || /REPLACE/.test(SHAREPOINT_FLOW_URL)) return;
       const body = {
@@ -275,7 +299,6 @@
       try{
         await fetch(SHAREPOINT_FLOW_URL, {
           method: "POST",
-          // 用 text/plain + no-cors，避免預檢；Flow 端以 Parse JSON 解析字串
           headers: { "Content-Type": "text/plain;charset=utf-8" },
           mode: "no-cors",
           body: JSON.stringify(body)
@@ -285,8 +308,8 @@
       }
     }
 
-    // 可選：AI 週/月報
-    async function generateAIReport(mode){ // "week" | "month"
+    // AI 週/月報
+    async function generateAIReport(mode){
       const url = AI_SUMMARY_WEBAPP_URL;
       if(!url || /REPLACE/.test(url)) { showModal("未設定 AI 端點", "請先部署 AI Web App URL 後再使用。"); return; }
       const box = document.getElementById("ai-summary-box");
@@ -295,14 +318,13 @@
 
       const today = new Date(); let start, end;
       if(mode==="week"){
-        const d = new Date(today); const day = d.getDay()||7; d.setDate(d.getDate() - (day-1));
+        const d = new Date(today); const dow = d.getDay()||7; d.setDate(d.getDate()-(dow-1));
         start = d.toISOString().slice(0,10); const e = new Date(d); e.setDate(e.getDate()+6); end = e.toISOString().slice(0,10);
       }else{
         const d = new Date(today.getFullYear(), today.getMonth(), 1); start = d.toISOString().slice(0,10);
         const e = new Date(today.getFullYear(), today.getMonth()+1, 0); end = e.toISOString().slice(0,10);
       }
 
-      // 組裝摘要資料
       const ps = projects.map(p=>({ id:p.id, title:p.title||"", manager:p.manager||"", budget:n(p.budget), progress:n(p.progress), status:p.status||"" }));
       const ts = tasks.filter(t=> inRange(t.dueDate||"", start, end)).map(t=>({ id:t.id, projectId:t.projectId||"", taskName:t.taskName||"", assignee:t.assignee||"", dueDate:t.dueDate||"", status:t.status||"" }));
       const es = events.filter(ev=> overlapsRange(ev.startDate||"", ev.endDate||ev.startDate||"", start, end)).map(ev=>({ id:ev.id, projectId:ev.projectId||"", title:ev.title||"", assignee:ev.assignee||"", startDate:ev.startDate||"", endDate:ev.endDate||ev.startDate||"", description:ev.description||"" }));
@@ -310,21 +332,17 @@
       const payload = { action:"ai_summary", mode, start, end, projects:ps, tasks:ts, events:es };
 
       try{
-        const resp = await fetch(url, {
-          method: "POST",
-          headers: { "Content-Type": "text/plain;charset=utf-8" },
-          body: JSON.stringify(payload)
-        });
+        const resp = await fetch(url, { method:"POST", headers:{ "Content-Type":"text/plain;charset=utf-8" }, body: JSON.stringify(payload) });
         const data = await resp.json().catch(()=> ({}));
         const md = data?.summary || data?.text || "(無法產生報導)";
         box.textContent = md;
         dl.disabled = false;
         dl.onclick = ()=>{
           const blob = new Blob([md], { type: "text/markdown;charset=utf-8" });
-          const url = URL.createObjectURL(blob);
+          const u = URL.createObjectURL(blob);
           const a = document.createElement("a");
-          a.href = url; a.download = `project_report_${mode}_${start}_${end}.md`;
-          a.click(); URL.revokeObjectURL(url);
+          a.href = u; a.download = `project_report_${mode}_${start}_${end}.md`;
+          a.click(); URL.revokeObjectURL(u);
         };
       }catch(e){
         console.error(e);
@@ -332,29 +350,89 @@
       }
     }
 
-    // 初始化 Firebase（自動匿名登入）
+    // 初始化 Firebase + Auth
     async function initFirebase(){
-      try{
-        if(!firebaseConfig) throw new Error("缺少 Firebase 設定");
-        const app = initializeApp(firebaseConfig);
-        if(APP_CHECK_SITE_KEY){
-          initializeAppCheck(app, { provider: new ReCaptchaV3Provider(APP_CHECK_SITE_KEY), isTokenAutoRefreshEnabled: true });
-        }
-        db = getFirestore(app); auth = getAuth(app); storage = getStorage(app);
-        const cred = await signInAnonymously(auth);
-        currentUserId = cred.user.uid; isAuthReady = true;
-        document.getElementById("user-id-display").textContent = currentUserId + " (anonymous)";
-        initializeSystem(true);
-      }catch(e){
-        console.error("初始化失敗：", e);
-        const msg = (e && (e.code || e.message)) ? `${e.code || ""} ${e.message || ""}` : "未知錯誤";
-        document.getElementById("user-id-display").textContent = `初始化失敗：${msg}`;
-        isAuthReady = false; initializeSystem(false);
+      if(!firebaseConfig) { console.error("缺少 Firebase 設定"); return; }
+      const app = initializeApp(firebaseConfig);
+      if(APP_CHECK_SITE_KEY){
+        initializeAppCheck(app, { provider: new ReCaptchaV3Provider(APP_CHECK_SITE_KEY), isTokenAutoRefreshEnabled: true });
       }
+      db = getFirestore(app);
+      auth = getAuth(app);
+      storage = getStorage(app);
+
+      // 監聽登入狀態
+      onAuthStateChanged(auth, async (user)=>{
+        isAuthReady = true;
+        if(user){
+          currentUserId = user.uid;
+          userProfile = {
+            displayName: user.displayName || "",
+            email: user.email || "",
+            photoURL: user.photoURL || ""
+          };
+          updateAuthUI(true);
+          if(!listenersStarted) initializeSystem(true);
+          await handleRedirectResultOnce();
+        }else{
+          currentUserId = "";
+          userProfile = { displayName:"", email:"", photoURL:"" };
+          updateAuthUI(false);
+          initializeSystem(false); // 仍先渲染儀表板（未登入版）
+        }
+      });
     }
 
+    function updateAuthUI(loggedIn){
+      const btnIn  = document.getElementById("btn-signin");
+      const btnOut = document.getElementById("btn-signout");
+      if(btnIn)  btnIn.classList.toggle("hidden", !!loggedIn);
+      if(btnOut) btnOut.classList.toggle("hidden", !loggedIn);
+      if(window.lucide?.createIcons) lucide.createIcons();
+    }
+
+    // 登入：Popup → 失敗 fallback Redirect
+    window.signInWithGoogle = async function(){
+      try{
+        const provider = new GoogleAuthProvider();
+        provider.setCustomParameters({ prompt: 'select_account' });
+        await signInWithPopup(auth, provider);
+      }catch(e){
+        const code = e?.code || "";
+        const shouldRedirect = [
+          "auth/popup-blocked",
+          "auth/cancelled-popup-request",
+          "auth/operation-not-supported-in-this-environment",
+          "auth/idpiframe-initialization-failed",
+          "auth/unauthorized-domain",
+          "auth/internal-error"
+        ].some(p => code.includes(p));
+        if(shouldRedirect){
+          try{
+            const provider = new GoogleAuthProvider();
+            provider.setCustomParameters({ prompt: 'select_account' });
+            await signInWithRedirect(auth, provider);
+          }catch(err2){
+            console.error(err2); showModal("登入失敗", err2?.message || String(err2));
+          }
+        }else{
+          console.error(e); showModal("登入失敗", e?.message || String(e));
+        }
+      }
+    };
+    async function handleRedirectResultOnce(){
+      try{ await getRedirectResult(auth); }catch(e){ console.warn("redirect login error:", e); }
+    }
+    window.appSignOut = async function(){
+      try{ await signOut(auth); showModal("已登出","您已成功登出。"); }
+      catch(e){ console.error(e); showModal("登出失敗", e?.message || String(e)); }
+    };
+
+    // 系統初始化與監聽
     function initializeSystem(withData){
-      setView('dashboard');
+      // 先顯示儀表板（避免初次開啟空白）
+      if(currentView!=="dashboard") currentView = "dashboard";
+      renderDashboard(true); // 加入載入中狀態
       if(withData) startRealtimeListeners();
     }
 
@@ -362,38 +440,53 @@
       if(!db || listenersStarted) return; listenersStarted = true;
 
       onSnapshot(query(collection(db, PROJECTS_COLLECTION_PATH), orderBy("createdAt","desc")), (snap)=>{
-        projects = snap.docs.map(d=>({id:d.id, ...d.data()})); rerenderByView();
+        projects = snap.docs.map(d=>({id:d.id, ...d.data()}));
+        rerenderByView();
       });
       onSnapshot(query(collection(db, TASKS_COLLECTION_PATH), orderBy("createdAt","desc")), (snap)=>{
-        tasks = snap.docs.map(d=>({id:d.id, ...d.data()})); rerenderByView();
+        tasks = snap.docs.map(d=>({id:d.id, ...d.data()}));
+        rerenderByView();
       });
       onSnapshot(query(collection(db, EVENTS_COLLECTION_PATH), orderBy("startDate","asc")), (snap)=>{
-        events = snap.docs.map(d=>({id:d.id, ...d.data()})); if(currentView==="calendar") renderCalendar();
+        events = snap.docs.map(d=>({id:d.id, ...d.data()}));
+        if(currentView==="calendar") renderCalendar();
       });
       onSnapshot(query(collection(db, FILES_COLLECTION_PATH), orderBy("uploadedAt","desc")), (snap)=>{
-        files = snap.docs.map(d=>({id:d.id, ...d.data()})); if(currentView==="details") renderProjectDetails(selectedProjectId);
+        files = snap.docs.map(d=>({id:d.id, ...d.data()}));
+        if(currentView==="details") renderProjectDetails(selectedProjectId);
       });
       onSnapshot(doc(db, SETTINGS_DOC_PATH), (snap)=>{
         if(snap.exists()){
           const d = snap.data()||{}; budgetCaps = { personnelCap:n(d.personnelCap), operatingCap:n(d.operatingCap), equipmentCap:n(d.equipmentCap) };
-        }else{ budgetCaps = { personnelCap:0, operatingCap:0, equipmentCap:0 }; }
+        }else{
+          budgetCaps = { personnelCap:0, operatingCap:0, equipmentCap:0 };
+        }
         if(currentView==="dashboard") renderDashboard();
       });
       onSnapshot(query(collection(db, MANAGERS_COLLECTION_PATH), orderBy("name","asc")), (snap)=>{
-        managers = snap.docs.map(d=>({ id:d.id, ...d.data() })); rerenderByView();
+        managers = snap.docs.map(d=>({ id:d.id, ...d.data() }));
+        rerenderByView();
+      });
+      onSnapshot(query(collection(db, COMMUNITY_COLLECTION_PATH), orderBy("createdAt","desc")), (snap)=>{
+        communityPosts = snap.docs.map(d=>({ id:d.id, ...d.data() }));
+        if(currentView==="community") renderCommunity();
       });
     }
 
     // 視圖切換
     window.setView = function(view, arg){
       currentView = view;
-      if(view==="dashboard"){ setActiveNav("nav-dashboard"); renderDashboard(); }
-      else if(view==="creation"){ setActiveNav("nav-creation"); renderProjectCreation(); }
-      else if(view==="details"){ setActiveNav("nav-details"); selectedProjectId = (typeof arg === "string" && arg) ? arg : (projects[0]?.id || null); renderProjectDetails(selectedProjectId); }
-      else if(view==="tasks"){ setActiveNav("nav-tasks"); renderTaskManagement(); }
-      else if(view==="calendar"){ setActiveNav("nav-calendar"); renderCalendar(); }
-      else if(view==="report"){ setActiveNav("nav-report"); renderReport(); }
-      // 注意：不再提供 settings 的導覽入口
+      setActiveByView(view);
+      if(view==="dashboard"){ renderDashboard(); }
+      else if(view==="creation"){ renderProjectCreation(); }
+      else if(view==="details"){
+        selectedProjectId = (typeof arg === "string" && arg) ? arg : (projects[0]?.id || null);
+        renderProjectDetails(selectedProjectId);
+      }
+      else if(view==="tasks"){ renderTaskManagement(); }
+      else if(view==="calendar"){ renderCalendar(); }
+      else if(view==="report"){ renderReport(); }
+      else if(view==="community"){ renderCommunity(); }
     };
     function rerenderByView(){
       if(currentView==="dashboard") renderDashboard();
@@ -402,10 +495,23 @@
       if(currentView==="tasks") renderTaskManagement();
       if(currentView==="calendar") renderCalendar();
       if(currentView==="report") renderReport();
+      if(currentView==="community") renderCommunity();
     }
 
-    // 聚合「已用金額」（若無 used 欄位則退回 budget 子項）
-    function aggregateUsedTotals(){
+    // 儀表板（加入「載入中」與「未登入」狀態，避免初次空白）
+    function renderDashboard(isBoot=false){
+      const c = document.getElementById("main-content");
+      if(!c) return;
+
+      // 未登入時顯示提示，但仍渲染骨架
+      const notLogged = !currentUserId;
+
+      const totalProjects = projects.length;
+      const completed = projects.filter(p => (n(p.progress)) >= 95).length;
+      const totalBudget = projects.reduce((s,p)=>s+n(p.budget),0);
+      const empty = totalProjects===0;
+
+      // 聚合已用
       let personnelUsed = 0, operatingUsed = 0, equipmentUsed = 0;
       for(const p of projects){
         const pu = ('personnelUsed' in p) ? n(p.personnelUsed) : n(p.personnelBudget);
@@ -413,18 +519,6 @@
         const eu = ('equipmentUsed' in p) ? n(p.equipmentUsed) : n(p.equipmentBudget);
         personnelUsed += pu; operatingUsed += ou; equipmentUsed += eu;
       }
-      return { personnelUsed, operatingUsed, equipmentUsed };
-    }
-
-    // 儀表板
-    function renderDashboard(){
-      const c = document.getElementById("main-content");
-      const totalProjects = projects.length;
-      const completed = projects.filter(p => (n(p.progress)) >= 95).length;
-      const totalBudget = projects.reduce((s,p)=>s+n(p.budget),0);
-      const empty = totalProjects===0;
-
-      const { personnelUsed, operatingUsed, equipmentUsed } = aggregateUsedTotals();
       const pc = n(budgetCaps.personnelCap), oc = n(budgetCaps.operatingCap), ec = n(budgetCaps.equipmentCap);
       const pRate = pc>0 ? clamp01(personnelUsed/pc) : 0;
       const oRate = oc>0 ? clamp01(operatingUsed/oc) : 0;
@@ -433,7 +527,20 @@
       const barClass = (rate, remain)=> remain>=0 ? (rate>=0.95 ? "bg-yellow-400" : "bg-primary-blue") : "bg-red-500";
 
       c.innerHTML = `
-        <h2 class="text-3xl font-bold text-gray-800 mb-6 border-b pb-2">專案儀表板</h2>
+        <h2 class="text-3xl font-bold text-gray-800 mb-6 border-b pb-2 flex items-center">
+          <i data-lucide="layout-dashboard" class="w-7 h-7 mr-3 text-primary-blue"></i> 專案儀表板
+          ${notLogged ? '<span class="ml-3 text-xs px-2 py-1 rounded bg-yellow-100 text-yellow-800">請先登入以讀取資料</span>' : ''}
+        </h2>
+
+        ${ isBoot && !listenersStarted ? `
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8 animate-pulse">
+            ${[1,2,3].map(()=>`
+              <div class="bg-white p-6 rounded-xl shadow-lg">
+                <div class="h-6 bg-gray-200 rounded w-1/3 mb-4"></div>
+                <div class="h-8 bg-gray-200 rounded w-1/2"></div>
+              </div>`).join('')}
+          </div>
+        ` : ''}
 
         <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
           <div class="project-card bg-white p-6 rounded-xl shadow-lg border-t-4 border-primary-blue">
@@ -483,7 +590,7 @@
             empty ? `
             <div class="text-center py-10">
               <i data-lucide="alert-triangle" class="w-10 h-10 text-yellow-500 mx-auto mb-4"></i>
-              <p class="text-lg text-gray-600">目前沒有專案資料。</p>
+              <p class="text-lg text-gray-600">${notLogged ? '請先登入以載入專案資料。' : '目前沒有專案資料。'}</p>
               <button onclick="setView('creation')" class="mt-4 px-4 py-2 bg-primary-blue text-white rounded-lg hover:bg-blue-700 transition">
                 <i data-lucide="plus" class="w-5 h-5 inline mr-1"></i> 新增第一個專案
               </button>
@@ -566,7 +673,7 @@
           feedback.className="mt-4 text-sm text-red-600"; feedback.textContent="請填寫完整的更新訊息。"; return;
         }
         if(!isAuthorized()){
-          feedback.className="mt-4 text-sm text-red-600"; feedback.textContent="初始化未完成，請稍後再試。"; return;
+          feedback.className="mt-4 text-sm text-red-600"; feedback.textContent="請先登入再提交。"; return;
         }
         try{
           const ref = await addDoc(collection(db, TASKS_COLLECTION_PATH), {
@@ -584,10 +691,79 @@
       });
     }
 
-    // 新增/編輯專案
+    // 新增/編輯專案（同前，略：已在上方呼叫）
+
+    function isValidProjectId(id){ return /^[A-Za-z0-9_-]{3,64}$/.test(id||""); }
+
+    async function handleNewProjectSubmission(e){
+      e.preventDefault();
+      const feedback = document.getElementById("project-form-feedback");
+      if(!isAuthorized()){ showModal("請先登入","請先登入後再新增專案。"); return; }
+
+      const projectId = document.getElementById("proj-id").value.trim();
+      const title = document.getElementById("proj-title").value.trim();
+      const selectedManager = document.getElementById("proj-manager").value;
+      const typedManager = (document.getElementById("proj-manager-new")?.value || "").trim();
+      const manager = typedManager || selectedManager;
+
+      const personnelBudget = n(document.getElementById("proj-personnel").value);
+      const operatingBudget = n(document.getElementById("proj-operating").value);
+      const equipmentBudget = n(document.getElementById("proj-equipment").value);
+      const budget = n(document.getElementById("proj-budget").value);
+      const progress = Math.max(0, Math.min(100, n(document.getElementById("proj-progress").value)));
+      const status = document.getElementById("proj-status").value.trim();
+
+      if(!isValidProjectId(projectId)){
+        feedback.className="mt-4 text-sm text-red-600"; feedback.textContent="格式錯誤：專案編號僅能包含英數字、底線、連字號，長度 3–64。"; return;
+      }
+      if(projects.some(p=>p.id===projectId)){
+        feedback.className="mt-4 text-sm text-red-600"; feedback.textContent=`錯誤：專案編號 ${projectId} 已存在！`; return;
+      }
+
+      try{
+        if(typedManager){
+          const exists = managers.some(m => (m.name||"") === typedManager);
+          if(!exists){
+            await addDoc(collection(db, MANAGERS_COLLECTION_PATH), {
+              name: typedManager, email:"", title:"",
+              createdAt: serverTimestamp(), reporterId: currentUserId
+            });
+          }
+        }
+
+        await setDoc(doc(db, PROJECTS_COLLECTION_PATH, projectId), {
+          id: projectId, title, manager,
+          budget, personnelBudget, operatingBudget, equipmentBudget,
+          progress, status, proposer: manager, manpower: 0, type:"手動輸入",
+          createdAt: serverTimestamp(), reporterId: currentUserId
+        });
+
+        backupProjectToSharePoint({
+          id: projectId, title, manager,
+          budget, personnelBudget, operatingBudget, equipmentBudget,
+          progress, status
+        });
+
+        sendTeamsNotification(
+          `[新專案建立] ${title}`,
+          `**專案編號:** ${projectId}\n\n**專案管理人:** ${manager}\n\n**預算：**${fmtMoney(budget)}（人事${fmtMoney(personnelBudget)} / 業務${fmtMoney(operatingBudget)} / 設備${fmtMoney(equipmentBudget)}）`,
+          "059669"
+        );
+
+        feedback.className="mt-4 text-sm text-secondary-green";
+        feedback.textContent="專案新增成功！已同步備份。";
+        document.getElementById("new-project-form").reset();
+        document.getElementById("proj-budget").value = 0;
+      }catch(err){
+        console.error(err);
+        feedback.className="mt-4 text-sm text-red-600";
+        feedback.textContent=`專案新增失敗：${err.message}`;
+      }
+    }
+
+    // 專案詳情（精簡版，含附件）
     function renderProjectCreation(){
       const c = document.getElementById("main-content");
-
       c.innerHTML = `
         <h2 class="text-3xl font-bold text-gray-800 mb-6 border-b pb-2 flex items-center">
           <i data-lucide="folder-plus" class="w-7 h-7 mr-3 text-primary-blue"></i> 新增/編輯專案資料
@@ -649,33 +825,6 @@
           </form>
           <div id="project-form-feedback" class="mt-4 text-sm font-medium"></div>
         </div>
-
-        <div class="bg-white p-6 rounded-xl shadow-lg">
-          <h3 class="text-xl font-semibold text-gray-800 mb-4 border-b pb-2">已建立專案清單</h3>
-          <div id="existing-projects-list" class="space-y-3">
-            ${
-              projects.length>0
-                ? projects.map(p=>{
-                    const isOwner = (p.reporterId||"") === currentUserId;
-                    return `
-                      <div class="flex justify-between items-center p-3 border-b hover:bg-gray-50 rounded-lg">
-                        <div>
-                          <p class="font-medium text-primary-blue cursor-pointer" onclick="setView('details','${escapeHtml(p.id)}')">${escapeHtml(p.title)}</p>
-                          <p class="text-xs text-gray-500">${escapeHtml(p.id)} | 負責人: ${escapeHtml(p.manager||"")} ${isOwner?'<span class="text-xs font-semibold text-accent-orange ml-2">(我的專案)</span>': ''}</p>
-                        </div>
-                        <div>
-                          ${
-                            isOwner
-                              ? `<button onclick="deleteProject('${escapeHtml(p.id)}')" class="text-red-500 hover:text-red-700 text-sm ml-4"><i data-lucide='trash-2' class='w-4 h-4 inline'></i> 刪除</button>`
-                              : `<span class="text-xs text-gray-400">非創建者不可刪除</span>`
-                          }
-                        </div>
-                      </div>`;
-                  }).join("")
-                : '<p class="text-gray-500 text-center py-4">目前沒有任何專案資料。</p>'
-            }
-          </div>
-        </div>
       `;
       if(window.lucide?.createIcons) lucide.createIcons();
 
@@ -688,97 +837,44 @@
       document.getElementById("new-project-form")?.addEventListener("submit", handleNewProjectSubmission);
     }
 
-    function isValidProjectId(id){ return /^[A-Za-z0-9_-]{3,64}$/.test(id||""); }
-
-    async function handleNewProjectSubmission(e){
-      e.preventDefault();
-      const feedback = document.getElementById("project-form-feedback");
-      if(!isAuthorized()){ showModal("初始化中","請稍後再試。"); return; }
-
-      const projectId = document.getElementById("proj-id").value.trim();
-      const title = document.getElementById("proj-title").value.trim();
-      const selectedManager = document.getElementById("proj-manager").value;
-      const typedManager = (document.getElementById("proj-manager-new")?.value || "").trim();
-      const manager = typedManager || selectedManager;
-
-      const personnelBudget = n(document.getElementById("proj-personnel").value);
-      const operatingBudget = n(document.getElementById("proj-operating").value);
-      const equipmentBudget = n(document.getElementById("proj-equipment").value);
-      const budget = n(document.getElementById("proj-budget").value);
-      const progress = Math.max(0, Math.min(100, n(document.getElementById("proj-progress").value)));
-      const status = document.getElementById("proj-status").value.trim();
-
-      if(!isValidProjectId(projectId)){
-        feedback.className="mt-4 text-sm text-red-600"; feedback.textContent="格式錯誤：專案編號僅能包含英數字、底線、連字號，長度 3–64。"; return;
-      }
-      if(projects.some(p=>p.id===projectId)){
-        feedback.className="mt-4 text-sm text-red-600"; feedback.textContent=`錯誤：專案編號 ${projectId} 已存在！`; return;
-      }
-
-      try{
-        // 若手動輸入主持人且名單無此人，先加入
-        if(typedManager){
-          const exists = managers.some(m => (m.name||"") === typedManager);
-          if(!exists){
-            await addDoc(collection(db, MANAGERS_COLLECTION_PATH), {
-              name: typedManager, email:"", title:"",
-              createdAt: serverTimestamp(), reporterId: currentUserId
-            });
-          }
-        }
-
-        // 寫入 Firestore
-        await setDoc(doc(db, PROJECTS_COLLECTION_PATH, projectId), {
-          id: projectId, title, manager,
-          budget, personnelBudget, operatingBudget, equipmentBudget,
-          progress, status, proposer: manager, manpower: 0, type:"手動輸入",
-          createdAt: serverTimestamp(), reporterId: currentUserId
+    // 檔案上傳/中繼資料
+    async function uploadProjectFiles(projectId, fileList, onProgress){
+      for(const file of fileList){
+        const safeName = file.name.replace(/[^\w.\-() ]+/g, "_");
+        const storagePath = `artifacts/${APP_ID}/uploads/project_files/${projectId}/${Date.now()}_${safeName}`;
+        const refObj = sRef(storage, storagePath);
+        const task = uploadBytesResumable(refObj, file, {
+          contentType: file.type || "application/octet-stream",
+          customMetadata: { ownerUid: currentUserId }
         });
-
-        // 備份到 SharePoint（非阻斷）
-        backupProjectToSharePoint({
-          id: projectId, title, manager,
-          budget, personnelBudget, operatingBudget, equipmentBudget,
-          progress, status
+        await new Promise((resolve, reject)=>{
+          task.on("state_changed",
+            snap => { if(onProgress){ const pct = Math.round((snap.bytesTransferred / snap.totalBytes) * 100); onProgress(pct, file.name); } },
+            reject, resolve
+          );
         });
-
-        sendTeamsNotification(
-          `[新專案建立] ${title}`,
-          `**專案編號:** ${projectId}\n\n**專案管理人:** ${manager}\n\n**預算：**${fmtMoney(budget)}（人事${fmtMoney(personnelBudget)} / 業務${fmtMoney(operatingBudget)} / 設備${fmtMoney(equipmentBudget)}）`,
-          "059669"
-        );
-
-        feedback.className="mt-4 text-sm text-secondary-green";
-        feedback.textContent="專案新增成功！已同步備份。";
-        document.getElementById("new-project-form").reset();
-        document.getElementById("proj-budget").value = 0;
-      }catch(err){
-        console.error(err);
-        feedback.className="mt-4 text-sm text-red-600";
-        feedback.textContent=`專案新增失敗：${err.message}`;
+        const url = await getDownloadURL(refObj);
+        await addDoc(collection(db, FILES_COLLECTION_PATH), {
+          projectId, name: file.name, size: file.size || 0, contentType: file.type || "",
+          url, storagePath, uploadedAt: serverTimestamp(), reporterId: currentUserId
+        });
       }
     }
-
-    async function deleteProject(projectId){
-      const project = projects.find(p=>p.id===projectId);
-      if(!project || project.reporterId!==currentUserId){
-        showModal("權限限制","僅創建者可刪除此專案。"); return;
-      }
+    async function deleteProjectFile(fileId){
+      if(!isAuthorized()){ showModal("請先登入","請先登入後再操作。"); return; }
+      const f = files.find(x=>x.id===fileId); if(!f){ showModal("找不到檔案",""); return; }
+      if((f.reporterId||"") !== currentUserId){ showModal("權限限制","僅上傳者可刪除此檔案。"); return; }
       try{
-        await deleteDoc(doc(db, PROJECTS_COLLECTION_PATH, projectId));
-        sendTeamsNotification(`[專案已刪除] ${project?.title||projectId}`, `專案 ${projectId} 已由使用者 ${currentUserId} 刪除。`, "DC2626");
-        showModal("刪除成功", `專案 ${projectId} 已被移除。`);
+        if(f.storagePath){ await deleteObject(sRef(storage, f.storagePath)); }
+        await deleteDoc(doc(db, FILES_COLLECTION_PATH, fileId));
+        showModal("刪除成功", f.name);
       }catch(err){
-        console.error(err); showModal("錯誤", `刪除專案失敗：${err.message}`);
+        console.error(err); showModal("錯誤", `刪除檔案失敗：${err.message}`);
       }
     }
-    window.deleteProject = deleteProject;
+    window.deleteProjectFile = deleteProjectFile;
 
-    // 專案詳情（含附件 + 編輯）—— 內容同前略（為節省篇幅未改動核心流程）
-    // ...（保留你現有 renderProjectDetails、任務管理、行事曆程式）
-    // 下面直接貼入你上一版完整內容（已在前面提供），為避免超長，這裡從「任務管理」開始繼續：
-
-    // 任務管理（新增任務時，同步建立行事曆事件）
+    // 任務管理
     function renderTaskManagement(){
       const c = document.getElementById("main-content");
 
@@ -847,7 +943,7 @@
     async function handleNewTaskSubmission(e){
       e.preventDefault();
       const feedback = document.getElementById("task-form-feedback");
-      if(!isAuthorized()){ showModal("初始化中","請稍後再試。"); return; }
+      if(!isAuthorized()){ showModal("請先登入","請先登入後再分配任務。"); return; }
 
       const projectId = document.getElementById("task-project-id").value;
       const projectTitle = projects.find(p=>p.id===projectId)?.title || projectId;
@@ -922,7 +1018,7 @@
     }
 
     async function updateTaskStatus(taskId, newStatus){
-      if(!isAuthorized()){ showModal("初始化中","請稍後再試。"); return; }
+      if(!isAuthorized()){ showModal("請先登入","請先登入後再操作。"); return; }
       try{
         await updateDoc(doc(db, TASKS_COLLECTION_PATH, taskId), { status:newStatus, updatedAt: serverTimestamp() });
         const task = tasks.find(t=>t.id===taskId);
@@ -937,7 +1033,7 @@
     }
     window.updateTaskStatus = updateTaskStatus;
 
-    // 行事曆（略，與先前相同）
+    // 行事曆
     function buildCalendarEventsForFC(){
       return events.map(ev=>{
         const start=ev.startDate, end=(ev.endDate && ev.endDate!==ev.startDate)?ev.endDate:ev.startDate;
@@ -992,7 +1088,7 @@
       document.getElementById("new-event-form")?.addEventListener("submit", async (e)=>{
         e.preventDefault();
         const feedback = document.getElementById("event-form-feedback");
-        if(!isAuthorized()){ showModal("初始化中","請稍後再試。"); return; }
+        if(!isAuthorized()){ showModal("請先登入","請先登入後再新增行事。"); return; }
         const projectId = document.getElementById("evt-project-id").value;
         const title = document.getElementById("evt-title").value;
         const assignee = document.getElementById("evt-assignee").value;
@@ -1013,7 +1109,7 @@
       });
     }
 
-    // 報告與下載（CSV + AI）
+    // 報告與下載
     function renderReport(){
       const c = document.getElementById("main-content");
 
@@ -1167,45 +1263,208 @@
       }
     }
 
-    // 檔案上傳/中繼資料（沿用既有）
-    async function uploadProjectFiles(projectId, fileList, onProgress){
+    // 資訊交流（社群貼文）
+    async function uploadCommunityImages(fileList, onProgress){
+      const uploaded = [];
       for(const file of fileList){
+        if(!file.type?.startsWith("image/")) { continue; }
         const safeName = file.name.replace(/[^\w.\-() ]+/g, "_");
-        const storagePath = `artifacts/${APP_ID}/uploads/project_files/${projectId}/${Date.now()}_${safeName}`;
+        const storagePath = `artifacts/${APP_ID}/uploads/community/${currentUserId}/${Date.now()}_${safeName}`;
         const refObj = sRef(storage, storagePath);
-        const task = uploadBytesResumable(refObj, file, {
-          contentType: file.type || "application/octet-stream",
-          customMetadata: { ownerUid: currentUserId }
-        });
-        await new Promise((resolve, reject)=>{
+        const task = uploadBytesResumable(refObj, file, { contentType: file.type || "image/*", customMetadata: { ownerUid: currentUserId } });
+        await new Promise((resolve,reject)=>{
           task.on("state_changed",
-            snap => { if(onProgress){ const pct = Math.round((snap.bytesTransferred / snap.totalBytes) * 100); onProgress(pct, file.name); } },
+            snap=>{ if(onProgress){ const pct = Math.round((snap.bytesTransferred/snap.totalBytes)*100); onProgress(pct,file.name); } },
             reject, resolve
           );
         });
         const url = await getDownloadURL(refObj);
-        await addDoc(collection(db, FILES_COLLECTION_PATH), {
-          projectId, name: file.name, size: file.size || 0, contentType: file.type || "",
-          url, storagePath, uploadedAt: serverTimestamp(), reporterId: currentUserId
+        uploaded.push({ url, storagePath, name: file.name, size: file.size||0, contentType: file.type||"" });
+      }
+      return uploaded;
+    }
+    async function createCommunityPost({ text, files }){
+      if(!currentUserId){ showModal("請先登入","請先使用 Google 登入再發佈貼文。"); return; }
+      const images = files && files.length ? await uploadCommunityImages(files) : [];
+      await addDoc(collection(db, COMMUNITY_COLLECTION_PATH), {
+        authorUid: currentUserId,
+        authorName: userProfile.displayName || userProfile.email || "使用者",
+        authorPhotoURL: userProfile.photoURL || "",
+        text: text || "",
+        images,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp()
+      });
+    }
+    async function deleteCommunityPost(postId){
+      const post = communityPosts.find(p=>p.id===postId);
+      if(!post){ return; }
+      if(post.authorUid !== currentUserId){
+        showModal("權限不足","只能刪除自己發佈的貼文。"); return;
+      }
+      if(!confirm("確定要刪除此貼文與其圖片？")) return;
+      try{
+        for(const img of (post.images||[])){
+          if(img.storagePath){ await deleteObject(sRef(storage, img.storagePath)); }
+        }
+      }catch(e){ console.warn("刪圖警告", e); }
+      await deleteDoc(doc(db, COMMUNITY_COLLECTION_PATH, postId));
+    }
+    window.deleteCommunityPost = deleteCommunityPost;
+
+    function timeAgo(ts){
+      const d = ts?.toDate ? ts.toDate() : (typeof ts==='string'? new Date(ts) : new Date());
+      const diff = (Date.now() - d.getTime())/1000;
+      if(diff<60) return `${Math.floor(diff)} 秒前`;
+      if(diff<3600) return `${Math.floor(diff/60)} 分鐘前`;
+      if(diff<86400) return `${Math.floor(diff/3600)} 小時前`;
+      return d.toLocaleString("zh-TW");
+    }
+    function renderCommunity(){
+      const c = document.getElementById("main-content");
+      const canPost = !!currentUserId;
+
+      c.innerHTML = `
+        <h2 class="text-3xl font-bold text-gray-800 mb-6 border-b pb-2 flex items-center">
+          <i data-lucide="messages-square" class="w-7 h-7 mr-3 text-primary-blue"></i> 資訊交流
+        </h2>
+
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div class="lg:col-span-1">
+            <div class="bg-white p-5 rounded-xl shadow-lg">
+              <h3 class="text-lg font-semibold text-gray-800 mb-3">發佈貼文</h3>
+              ${ canPost ? `
+                <form id="post-form" class="space-y-3">
+                  <textarea id="post-text" rows="4" class="w-full rounded-md border-gray-300 p-2 border" placeholder="分享你的想法、文章連結或說明"></textarea>
+                  <div>
+                    <input type="file" id="post-images" accept="image/*" multiple class="block w-full text-sm text-gray-700"/>
+                    <div id="post-upload-progress" class="text-xs text-gray-600 mt-1"></div>
+                  </div>
+                  <button type="submit" class="w-full py-2 bg-primary-blue text-white rounded-lg hover:bg-blue-700">發佈</button>
+                </form>
+              ` : `
+                <div class="text-sm text-gray-600">
+                  請先登入後即可發佈貼文。
+                  <button onclick="signInWithGoogle()" class="ml-2 px-3 py-1 text-white bg-primary-blue rounded-md">使用 Google 登入</button>
+                </div>
+              `}
+            </div>
+          </div>
+
+          <div class="lg:col-span-2">
+            <div id="post-feed" class="space-y-4">
+              ${ communityPosts.length===0 ? `
+                <div class="bg-white p-6 rounded-xl shadow-lg text-center text-gray-500">目前沒有貼文，成為第一個分享的人吧！</div>
+              ` : communityPosts.map(p=>`
+                <div class="bg-white p-5 rounded-xl shadow-lg">
+                  <div class="flex items-center mb-3">
+                    <div class="w-9 h-9 rounded-full bg-gray-200 overflow-hidden mr-3">
+                      ${ p.authorPhotoURL ? `<img src="${escapeHtml(p.authorPhotoURL)}" alt="" class="w-full h-full object-cover">` : '' }
+                    </div>
+                    <div class="flex-1">
+                      <div class="font-semibold text-gray-800">${escapeHtml(p.authorName||"使用者")}</div>
+                      <div class="text-xs text-gray-500">${timeAgo(p.createdAt)}</div>
+                    </div>
+                    ${ p.authorUid===currentUserId ? `
+                      <button class="text-red-600 text-sm hover:underline" onclick="deleteCommunityPost('${escapeHtml(p.id)}')">刪除</button>
+                    ` : ``}
+                  </div>
+                  <div class="text-gray-800 whitespace-pre-wrap mb-3">${escapeHtml(p.text||"")}</div>
+                  ${ (p.images||[]).length ? `
+                    <div class="grid grid-cols-2 md:grid-cols-3 gap-2">
+                      ${ p.images.map(img=>`
+                        <a href="${escapeHtml(img.url)}" target="_blank" class="block">
+                          <img src="${escapeHtml(img.url)}" alt="${escapeHtml(img.name||'')}" class="w-full h-32 object-cover rounded-md hover:opacity-90 transition">
+                        </a>
+                      `).join("") }
+                    </div>
+                  ` : ``}
+                </div>
+              `).join("")}
+            </div>
+          </div>
+        </div>
+      `;
+      if(window.lucide?.createIcons) lucide.createIcons();
+
+      const form = document.getElementById("post-form");
+      if(form){
+        form.addEventListener("submit", async (e)=>{
+          e.preventDefault();
+          if(!currentUserId){ showModal("請先登入","請先使用 Google 登入再發佈貼文。"); return; }
+          const text = document.getElementById("post-text").value.trim();
+          const files = document.getElementById("post-images").files;
+          const progEl = document.getElementById("post-upload-progress");
+          try{
+            progEl.textContent = files?.length ? "上傳中..." : "";
+            await createCommunityPost({ text, files });
+            progEl.textContent = "完成";
+            form.reset();
+            setTimeout(()=>{ progEl.textContent = ""; }, 800);
+          }catch(err){
+            console.error(err);
+            progEl.textContent = `失敗：${err.message}`;
+          }
         });
       }
     }
-    async function deleteProjectFile(fileId){
-      if(!isAuthorized()){ showModal("初始化中","請稍後再試。"); return; }
-      const f = files.find(x=>x.id===fileId); if(!f){ showModal("找不到檔案",""); return; }
-      if((f.reporterId||"") !== currentUserId){ showModal("權限限制","僅上傳者可刪除此檔案。"); return; }
-      try{
-        if(f.storagePath){ await deleteObject(sRef(storage, f.storagePath)); }
-        await deleteDoc(doc(db, FILES_COLLECTION_PATH, fileId));
-        showModal("刪除成功", f.name);
-      }catch(err){
-        console.error(err); showModal("錯誤", `刪除檔案失敗：${err.message}`);
-      }
-    }
-    window.deleteProjectFile = deleteProjectFile;
 
-    // 啟動
-    initFirebase();
+    // 側欄展開/收合（預設展開有文字，按漢堡切換為圖示）
+    window.toggleSidebar = function(force){
+      const sb = document.getElementById('app-sidebar');
+      const main = document.getElementById('app-main');
+      const isCurrentlyExpanded = sb.classList.contains('expanded');
+      const nextExpanded = (typeof force === 'boolean') ? force : !isCurrentlyExpanded;
+      sb.classList.toggle('expanded', nextExpanded);
+      sb.classList.toggle('collapsed', !nextExpanded);
+      sb.style.width = nextExpanded ? '240px' : '72px';
+      if(main) main.style.marginLeft = nextExpanded ? '240px' : '72px';
+      const btn = document.getElementById('btn-toggle');
+      if(btn){
+        btn.title = nextExpanded ? '收合' : '展開';
+        btn.innerHTML = nextExpanded ? '<i data-lucide="panel-left-close" class="nav-icon"></i>' : '<i data-lucide="panel-left-open" class="nav-icon"></i>';
+      }
+      try{ localStorage.setItem('sidebarExpanded', nextExpanded ? '1' : '0'); }catch{}
+      if(window.lucide?.createIcons) lucide.createIcons();
+    };
+
+    function setActiveByView(view){
+      document.querySelectorAll('#app-sidebar .nav-item').forEach(el=>{
+        el.classList.toggle('active', el.getAttribute('data-view') === view);
+      });
+      if(window.lucide?.createIcons) lucide.createIcons();
+    }
+
+    function isAuthorized(){ return !!(isAuthReady && currentUserId); }
+
+    // 啟動：先渲染儀表板骨架，再初始化 Firebase，避免初次空白
+    window.addEventListener('DOMContentLoaded', ()=>{
+      // 側欄初始狀態：預設展開；若有儲存則套用
+      const savedExpanded = (()=>{
+        try{ return localStorage.getItem('sidebarExpanded') !== '0'; }catch{ return true; }
+      })();
+      // 設定初始樣式
+      const sb = document.getElementById('app-sidebar');
+      const main = document.getElementById('app-main');
+      sb.classList.toggle('expanded', savedExpanded);
+      sb.classList.toggle('collapsed', !savedExpanded);
+      sb.style.width = savedExpanded ? '240px' : '72px';
+      if(main) main.style.marginLeft = savedExpanded ? '240px' : '72px';
+      const btn = document.getElementById('btn-toggle');
+      if(btn){
+        btn.title = savedExpanded ? '收合' : '展開';
+        btn.innerHTML = savedExpanded ? '<i data-lucide="panel-left-close" class="nav-icon"></i>' : '<i data-lucide="panel-left-open" class="nav-icon"></i>';
+      }
+
+      // 首次先顯示儀表板（載入中骨架）
+      currentView = "dashboard";
+      renderDashboard(true);
+
+      // 初始化 Firebase/Auth（完成後會觸發資料監聽並刷新畫面）
+      initFirebase();
+
+      if(window.lucide?.createIcons) lucide.createIcons();
+    });
   </script>
 </body>
 </html>

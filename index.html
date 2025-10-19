@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>深耕計畫專案管理儀表板</title>
 
+  <!-- CSP：擴充常用來源，避免 Storage/頭像被擋 -->
   <meta http-equiv="Content-Security-Policy"
         content="default-src 'self';
                  script-src 'self' 'unsafe-inline'
@@ -26,12 +27,13 @@
                               https://*.gstatic.com
                               https://accounts.google.com
                               https://firebasestorage.googleapis.com
+                              https://*.firebasestorage.app
                               https://content-firebaseappcheck.googleapis.com
                               https://script.google.com
                               https://script.googleusercontent.com
                               https://*.logic.azure.com
                               https://*.azure-apim.net;
-                 img-src 'self' data: https:;
+                 img-src 'self' data: https: https://*.googleusercontent.com https://*.firebasestorage.app;
                  style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net;
                  frame-src 'self'
                            https://www.google.com
@@ -48,6 +50,7 @@
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/main.min.css">
   <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/index.global.min.js"></script>
 
+  <!-- 環境設定（依實際專案調整） -->
   <script>
     window.__firebase_config_object = {
       apiKey: "AIzaSyCIXWS0ynK4GdsdQIXkOs3fHuzAendZ7LA",
@@ -93,10 +96,12 @@
     .action-btn{display:inline-flex;align-items:center;gap:.4rem;border-radius:10px;padding:.5rem .8rem}
     .btn-blue{background:#2563eb;color:#fff}
     .btn-gray{background:#374151;color:#e5e7eb}
-
     .link{color:#2563eb;cursor:pointer}
     .link:hover{text-decoration:underline}
     .disabled{opacity:.6;cursor:not-allowed}
+
+    /* 全域狀態列（顯示 Firestore/登入錯誤） */
+    #status-banner{position:fixed;left:16px;right:16px;bottom:16px;z-index:50;border-radius:12px;padding:10px 12px;display:none}
   </style>
 </head>
 <body class="bg-gray-50 font-sans min-h-screen">
@@ -206,10 +211,13 @@
     </aside>
 
     <main id="app-main" class="flex-grow p-8" style="margin-left:240px;">
+      <!-- 連線/權限狀態列 -->
+      <div id="status-banner" class="bg-yellow-100 text-yellow-900 border border-yellow-300"></div>
       <div id="main-content" class="w-full"></div>
     </main>
   </div>
 
+  <!-- Debug 面板 -->
   <div id="debug">
     <header>
       <div>Auth Debug<span id="dbg-state" class="pill">init</span></div>
@@ -218,6 +226,7 @@
     <pre id="dbg-log"></pre>
   </div>
 
+  <!-- App 腳本 -->
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
     import {
@@ -247,7 +256,7 @@
 
     setLogLevel('error');
 
-    // Debug
+    // ============ Debug ============
     const debugMode = /[?&]debug=1/.test(location.search);
     const dbgEl = document.getElementById('debug');
     const dbgLogEl = document.getElementById('dbg-log');
@@ -261,7 +270,7 @@
     }
     function setDbgState(s, cls){ if(!debugMode) return; dbgStateEl.textContent = s; dbgStateEl.className = 'pill ' + (cls||''); }
 
-    // 全域
+    // ============ 全域 ============
     let db, auth, storage;
     let currentUserId = "";
     let listenersStarted = false;
@@ -297,10 +306,21 @@
     const btnEmailSignUp = document.getElementById('btn-email-signup');
     const btnReset = document.getElementById('btn-reset');
 
-    // Utils
+    const statusBanner = document.getElementById('status-banner');
+
+    // ============ 小工具 ============
     function showModal(title, message){ alert((title||"提示") + (message?("\n\n" + message):"")); }
     function n(v){ return Number(v)||0; }
     function fmtMoney(x){ return `$${(Number(x)||0).toLocaleString()}`; }
+    function tsToDateStr(v){
+      try{
+        if(!v) return "";
+        if (typeof v==="string") return v.slice(0,10);
+        if (v?.toDate) return v.toDate().toISOString().slice(0,10);
+        if (v instanceof Date) return v.toISOString().slice(0,10);
+      }catch(e){ return "" }
+      return "";
+    }
     function canUseSessionStorage(){ try{ const k='__ss__'+Math.random(); sessionStorage.setItem(k,'1'); const ok=sessionStorage.getItem(k)==='1'; sessionStorage.removeItem(k); return ok; } catch{ return false; } }
     function isLikelyInAppBrowser(){
       const ua = navigator.userAgent || '';
@@ -315,14 +335,18 @@
     }
     window.copyUrl = copyUrl;
 
-    // 顯示/隱藏 App
-    function showAppShell(show){
-      if(show){ landing.classList.add("hidden"); appShell.classList.remove("hidden"); }
-      else{ appShell.classList.add("hidden"); landing.classList.remove("hidden"); }
-      if(window.lucide?.createIcons) try{ lucide.createIcons(); }catch{}
+    function setBanner(type, text){
+      if(!statusBanner) return;
+      const cls = type==='error' ? 'bg-red-100 text-red-900 border-red-300'
+                : type==='warn' ? 'bg-yellow-100 text-yellow-900 border-yellow-300'
+                : 'bg-green-100 text-green-900 border-green-300';
+      statusBanner.className = cls + ' rounded-xl px-3 py-2 mb-3';
+      statusBanner.style.display = 'block';
+      statusBanner.innerHTML = text || '';
     }
+    function clearBanner(){ if(statusBanner){ statusBanner.style.display='none'; statusBanner.innerHTML=''; } }
 
-    // 使用者 UI
+    // ============ 使用者 ============
     function updateUserChips(){
       const nameEl = document.getElementById("user-display-name");
       const emailEl= document.getElementById("user-email");
@@ -350,6 +374,7 @@
         showAppShell(true);
         if(!listenersStarted) initializeSystem(true);
         setDbgState('signed-in','ok'); logDbg('OK','applyUser signed-in',{uid:user.uid,email:user.email});
+        clearBanner();
       }else{
         currentUserId = "";
         userProfile = { displayName:"", email:"", photoURL:"" };
@@ -358,6 +383,7 @@
       }
     }
 
+    // ============ 登入輔助 ============
     async function clearAuthStuck(){
       try{ landingLoading?.classList.add("hidden"); }catch{}
       try{ btnGoogle?.removeAttribute('disabled'); }catch{}
@@ -368,7 +394,13 @@
     }
     window.clearAuthStuck = clearAuthStuck;
 
-    // Google 登入：popup 優先；popup 被擋且 sessionStorage 可用時，回退 redirect；否則提示外部瀏覽器/使用 Email。
+    // 追蹤 redirect 啟動與回來的還原狀態（避免「回來卻沒人」）
+    const REDIRECT_FLAG_KEY = 'auth:redirect:startedAt';
+    function markRedirectStart(){ try{ localStorage.setItem(REDIRECT_FLAG_KEY, String(Date.now())); }catch{} }
+    function redirectStartedMs(){ try{ return Number(localStorage.getItem(REDIRECT_FLAG_KEY)||0); }catch{ return 0 } }
+    function clearRedirectFlag(){ try{ localStorage.removeItem(REDIRECT_FLAG_KEY); }catch{} }
+
+    // Google 登入：popup → redirect（僅當 sessionStorage 可用）＋ 強化錯誤提示
     window.signInWithGoogle = async function(){
       if(isLikelyInAppBrowser()){
         inAppOverlay.style.display = 'block';
@@ -394,11 +426,13 @@
           const ssOK = canUseSessionStorage();
           if(ssOK){
             setDbgState('redirecting','warn'); logDbg('INFO','fallback to signInWithRedirect');
+            markRedirectStart();
             await signInWithRedirect(auth, provider);
             return;
           }else{
             openWindowBtn?.classList.remove('hidden');
             resetBtn?.classList.remove('hidden');
+            setBanner('warn', '瀏覽器封鎖了登入視窗或儲存機制，請允許彈出視窗、改用外部瀏覽器，或使用 Email 登入。');
             showModal("瀏覽器封鎖了登入視窗",
               "請允許彈出視窗（pop-up），或點「在新視窗開啟」，或改用外部瀏覽器（Chrome/Edge/Safari 非無痕），或改用下方 Email 登入。");
           }
@@ -470,6 +504,7 @@
       try{ localStorage.setItem('sidebarExpanded', nextExpanded ? '1' : '0'); }catch{}
     };
 
+    // ============ Firebase 初始化 ============
     async function choosePersistence(auth){
       const candidates = [indexedDBLocalPersistence, browserLocalPersistence, browserSessionPersistence, inMemoryPersistence];
       for(const p of candidates){
@@ -477,6 +512,32 @@
         catch(e){ logDbg('WARN','persistence failed', {target:p.type || 'unknown', code:e?.code, message:e?.message}); }
       }
       return null;
+    }
+
+    // 等待 auth 狀態回來（onAuthStateChanged 或 getRedirectResult 其一先到）
+    function waitForAuthUser(timeoutMs=15000){
+      return new Promise(async (resolve)=>{
+        let settled = false;
+        const t = setTimeout(()=>{ if(!settled){ settled = true; resolve(null); } }, timeoutMs);
+
+        const unsub = onAuthStateChanged(auth, (user)=>{
+          if(!settled && user){ settled = true; clearTimeout(t); unsub(); resolve(user); }
+        });
+
+        try{
+          const rr = await getRedirectResult(auth);
+          if(!settled && rr?.user){ settled = true; clearTimeout(t); unsub(); resolve(rr.user); }
+          else logDbg('INFO','getRedirectResult '+(rr?.user?'user':'empty'));
+        }catch(e){
+          logDbg('ERR','getRedirectResult error', {code:e?.code, message:e?.message});
+          // 常見：missing initial state / unauthorized-domain
+          if(e?.code === 'auth/unauthorized-domain'){
+            setBanner('error','Google 登入被拒（unauthorized-domain）。請到 Firebase Console → Authentication → Settings → Authorized domains 加入 chylio.github.io。');
+          }else if((e?.message||'').toLowerCase().includes('initial state')){
+            setBanner('warn','瀏覽器清除了登入初始狀態（missing initial state）。請允許此站的 Cookie/重新導向，或改用 Email 登入/外部瀏覽器。');
+          }
+        }
+      });
     }
 
     async function initFirebase(){
@@ -491,8 +552,9 @@
       landingLoading?.classList.remove("hidden");
       resetBtn?.classList.add('hidden');
       openWindowBtn?.classList.toggle('hidden', !isLikelyInAppBrowser());
-      setDbgState('restoring','warn'); logDbg('INFO','init: restoring...', {ua:navigator.userAgent, ssOK: canUseSessionStorage(), inApp:isLikelyInAppBrowser()});
+      setDbgState('restoring','warn'); logDbg('INFO','init: restoring...', {ua:navigator.userAgent, ssOK: canUseSessionStorage(), inApp:isLikelyInAppBrowser(), path: location.pathname});
 
+      // 逾時保護
       let settled=false;
       const safetyTimer=setTimeout(()=>{
         if(!settled){
@@ -504,43 +566,38 @@
         }
       },7000);
 
-      // 先掛監聽
+      // onAuthStateChanged
       onAuthStateChanged(auth, (user)=>{
-        settled=true; clearTimeout(safetyTimer);
-        landingLoading?.classList.add("hidden");
         logDbg('INFO','onAuthStateChanged', !!user ? 'user present' : 'no user');
         applyUser(user);
         btnGoogle?.removeAttribute('disabled');
-        // In-App 提醒（Google 會被封鎖，但 Email 可用）
-        if(isLikelyInAppBrowser()){
-          inAppOverlay.style.display = 'block';
-        }
       });
 
       // 選擇持久化
       try{ await choosePersistence(auth); }catch(e){ logDbg('ERR','choosePersistence error', {code:e?.code, message:e?.message}); }
 
-      // 若剛才回退走了 redirect，這裡會拿到結果
-      try{
-        const rr = await getRedirectResult(auth);
-        if(rr?.user){
-          logDbg('OK','getRedirectResult user', {uid:rr.user.uid, email:rr.user.email});
-          applyUser(rr.user);
-          landingLoading?.classList.add("hidden");
-          btnGoogle?.removeAttribute('disabled');
-          settled=true; clearTimeout(safetyTimer);
+      // 若剛剛從 redirect 回來，等待還原
+      const redirectedAt = redirectStartedMs();
+      if(redirectedAt){
+        setDbgState('restoring','warn');
+        const u = await waitForAuthUser(15000);
+        clearRedirectFlag();
+        if(u){
+          logDbg('OK','redirect restored',{uid:u.uid,email:u.email});
+          applyUser(u);
         }else{
-          logDbg('INFO','getRedirectResult empty');
+          setBanner('warn','Google 重新導向回來但無法取得登入狀態。請允許彈出視窗與 Cookie，或改用 Email 登入。');
         }
-      }catch(e){
-        logDbg('ERR','getRedirectResult error', {code:e?.code, message:e?.message});
       }
+
+      landingLoading?.classList.add("hidden");
+      settled=true; clearTimeout(safetyTimer);
     }
 
     function isAuthorized(){ return !!currentUserId; }
 
-    // ====== 以下：資料/視圖（保留原功能，略） ======
-    let managers=[]; const DEFAULT_MANAGERS=["蔡雅雯","陳乃菁","吳曉琪","蘇琬淳","楊穎潔","王小明","李小華","張曉安"];
+    // ============ 資料/視圖 ============
+    let managers=[]; const DEFAULT_MANAGERS=["蔡雅雯","陳乃菁","吳曉琪","蘇琬淳","楊穎潔"];
     let currentView="dashboard",selectedProjectId=null,calendarInstance=null;
     let projects=[],tasks=[],events=[],files=[],communityPosts=[],budgetCaps={personnelCap:0,operatingCap:0,equipmentCap:0};
 
@@ -551,13 +608,15 @@
     window.setView=function(view,arg){
       currentView=view; setActiveByView(view);
       if(view==="dashboard") renderDashboard();
-      else if(view==="tasks") renderTaskManagement();
-      else if(view==="calendar") renderCalendar();
-      else if(view==="report") renderReport();
-      else if(view==="community") renderCommunity();
-      else if(view==="details"){ selectedProjectId=(typeof arg==="string"&&arg)?arg:(projects[0]?.id||null); renderProjectDetails(selectedProjectId); }
+      else if(view==="tasks") renderTasksPlaceholder();
+      else if(view==="calendar") renderCalendarPlaceholder();
+      else if(view==="report") renderReportPlaceholder();
+      else if(view==="community") renderCommunityPlaceholder();
+      else if(view==="details"){ selectedProjectId=(typeof arg==="string"&&arg)?arg:(projects[0]?.id||null); renderProjectDetailsPlaceholder(selectedProjectId); }
     };
-    function rerenderByView(){ if(currentView==="dashboard") renderDashboard(); if(currentView==="tasks") renderTaskManagement(); if(currentView==="calendar") renderCalendar(); if(currentView==="report") renderReport(); if(currentView==="community") renderCommunity(); if(currentView==="details") renderProjectDetails(selectedProjectId); }
+    function rerenderByView(){
+      if(currentView==="dashboard") renderDashboard();
+    }
 
     function initializeSystem(withData){
       currentView="dashboard"; renderDashboard(true);
@@ -565,32 +624,78 @@
       const saved = (()=>{ try{ return localStorage.getItem('sidebarExpanded')!=='0'; }catch{return true} })();
       toggleSidebar(saved);
     }
+
+    function handleDbError(source, err){
+      console.error('Firestore error ['+source+']', err);
+      logDbg('ERR','onSnapshot '+source, {code: err?.code, message: err?.message});
+      if(err?.code === 'permission-denied'){
+        setBanner('error', `資料庫讀取被拒絕（permission-denied）。<br/>
+          請到 Firebase Console → Firestore Database → Rules，暫時設定允許已登入使用者讀寫
+          <code>artifacts/${APP_ID}/public/**</code> 的文件。`);
+      }else{
+        setBanner('warn', `無法讀取 ${source} 資料：${err?.message || '未知錯誤'}`);
+      }
+    }
+
     function startRealtimeListeners(){
       if(!db || listenersStarted) return; listenersStarted=true;
-      onSnapshot(query(collection(db, PROJECTS_COLLECTION_PATH), orderBy("createdAt","desc")), s=>{
-        projects=s.docs.map(d=>({id:d.id,...d.data()})); rerenderByView();
-      });
-      onSnapshot(query(collection(db, TASKS_COLLECTION_PATH), orderBy("createdAt","desc")), s=>{
-        tasks=s.docs.map(d=>({id:d.id,...d.data()})); rerenderByView();
-      });
-      onSnapshot(query(collection(db, EVENTS_COLLECTION_PATH), orderBy("startDate","asc")), s=>{
-        events=s.docs.map(d=>({id:d.id,...d.data()})); if(currentView==="calendar") renderCalendar();
-      });
-      onSnapshot(query(collection(db, FILES_COLLECTION_PATH), orderBy("uploadedAt","desc")), s=>{
-        files=s.docs.map(d=>({id:d.id,...d.data()})); if(currentView==="details") renderProjectDetails(selectedProjectId);
-      });
-      onSnapshot(doc(db, SETTINGS_DOC_PATH), snap=>{
-        if(snap.exists()){
-          const d=snap.data()||{}; budgetCaps={ personnelCap:n(d.personnelCap), operatingCap:n(d.operatingCap), equipmentCap:n(d.equipmentCap) };
-        }else{ budgetCaps={ personnelCap:0, operatingCap:0, equipmentCap:0 }; }
-        if(currentView==="dashboard") renderDashboard();
-      });
-      onSnapshot(query(collection(db, MANAGERS_COLLECTION_PATH), orderBy("name","asc")), s=>{
-        managers=s.docs.map(d=>({id:d.id,...d.data()})); rerenderByView();
-      });
-      onSnapshot(query(collection(db, COMMUNITY_COLLECTION_PATH), orderBy("createdAt","desc")), s=>{
-        communityPosts=s.docs.map(d=>({id:d.id,...d.data()})); if(currentView==="community") renderCommunity();
-      });
+
+      onSnapshot(
+        query(collection(db, PROJECTS_COLLECTION_PATH), orderBy("createdAt","desc")),
+        (s)=>{ projects=s.docs.map(d=>({id:d.id,...d.data()})); clearBanner(); rerenderByView(); },
+        (e)=> handleDbError('projects', e)
+      );
+      onSnapshot(
+        query(collection(db, TASKS_COLLECTION_PATH), orderBy("createdAt","desc")),
+        (s)=>{ tasks=s.docs.map(d=>({id:d.id,...d.data()})); },
+        (e)=> handleDbError('tasks', e)
+      );
+      onSnapshot(
+        query(collection(db, EVENTS_COLLECTION_PATH), orderBy("startDate","asc")),
+        (s)=>{ events=s.docs.map(d=>({id:d.id,...d.data()})); },
+        (e)=> handleDbError('events', e)
+      );
+      onSnapshot(
+        query(collection(db, FILES_COLLECTION_PATH), orderBy("uploadedAt","desc")),
+        (s)=>{ files=s.docs.map(d=>({id:d.id,...d.data()})); },
+        (e)=> handleDbError('files', e)
+      );
+      onSnapshot(
+        doc(db, SETTINGS_DOC_PATH),
+        (snap)=>{ if(snap.exists()){ const d=snap.data()||{}; budgetCaps={ personnelCap:n(d.personnelCap), operatingCap:n(d.operatingCap), equipmentCap:n(d.equipmentCap) }; } else { budgetCaps={personnelCap:0,operatingCap:0,equipmentCap:0}; } if(currentView==='dashboard') renderDashboard(); },
+        (e)=> handleDbError('settings', e)
+      );
+      onSnapshot(
+        query(collection(db, MANAGERS_COLLECTION_PATH), orderBy("name","asc")),
+        (s)=>{ managers=s.docs.map(d=>({id:d.id,...d.data()})); },
+        (e)=> handleDbError('managers', e)
+      );
+      onSnapshot(
+        query(collection(db, COMMUNITY_COLLECTION_PATH), orderBy("createdAt","desc")),
+        (s)=>{ communityPosts=s.docs.map(d=>({id:d.id,...d.data()})); },
+        (e)=> handleDbError('community', e)
+      );
+    }
+
+    async function seedDemoData(){
+      if(!isAuthorized()){ showModal("請先登入","請先登入後再建立示範資料。"); return; }
+      try{
+        await addDoc(collection(db, PROJECTS_COLLECTION_PATH), {
+          title: "示範專案 A",
+          manager: "蔡雅雯",
+          budget: 1000000,
+          personnelBudget: 400000,
+          operatingBudget: 300000,
+          equipmentBudget: 300000,
+          progress: 10,
+          status: "進行中",
+          createdAt: serverTimestamp(),
+          reporterId: currentUserId
+        });
+        setBanner('success', "已建立示範專案，稍候數秒資料會出現在儀表板。");
+      }catch(err){
+        handleDbError('seed', err);
+      }
     }
 
     function renderDashboard(isBoot=false){
@@ -649,7 +754,7 @@
             <div class="w-full bg-gray-200 rounded-full h-3"><div class="progress-bar h-3 rounded-full ${barClass(oRate,oRemain)}" style="width:${(oRate*100).toFixed(0)}%"></div></div>
             <div class="mt-2 text-sm text-gray-700 flex justify-between"><span>已用：<strong>${fmtMoney(operatingUsed)}</strong>（${(oRate*100).toFixed(0)}%）</span><span>${oRemain>=0?`餘額：<strong>${fmtMoney(oRemain)}</strong>`:`超支：<strong class="text-red-600">${fmtMoney(-oRemain)}</strong>`}</span></div>
           </div>
-          <div class="project-card bg-white p-6 rounded-xl shadow-lg border-t-4 border-blue-800">
+          <div class="project-card bg白 p-6 rounded-xl shadow-lg border-t-4 border-blue-800">
             <div class="flex items-center justify-between mb-2"><div class="font-semibold text-gray-800">設備費總預算</div><div class="text-sm text-gray-500">${fmtMoney(ec)}</div></div>
             <div class="w-full bg-gray-200 rounded-full h-3"><div class="progress-bar h-3 rounded-full ${barClass(eRate,eRemain)}" style="width:${(eRate*100).toFixed(0)}%"></div></div>
             <div class="mt-2 text-sm text-gray-700 flex justify-between"><span>已用：<strong>${fmtMoney(equipmentUsed)}</strong>（${(eRate*100).toFixed(0)}%）</span><span>${eRemain>=0?`餘額：<strong>${fmtMoney(eRemain)}</strong>`:`超支：<strong class="text-red-600">${fmtMoney(-eRemain)}</strong>`}</span></div>
@@ -658,11 +763,11 @@
 
         <div class="bg-white p-6 rounded-xl shadow-lg">
           ${ empty ? `
-            <div class="text-center py-10">
-              <i data-lucide="alert-triangle" class="w-10 h-10 text-yellow-500 mx-auto mb-4"></i>
-              <p class="text-lg text-gray-600">目前沒有專案資料。</p>
-              <button onclick="setView('tasks')" class="mt-4 px-4 py-2 bg-blue-800 text-white rounded-lg hover:bg-blue-700 transition">
-                <i data-lucide="plus" class="w-5 h-5 inline mr-1"></i> 前往新增或分配任務
+            <div class="text-center py-8">
+              <i data-lucide="alert-triangle" class="w-10 h-10 text-yellow-500 mx-auto mb-3"></i>
+              <p class="text-gray-700 mb-3">目前沒有專案資料。</p>
+              <button onclick="seedDemoData()" class="px-4 py-2 bg-blue-800 text-white rounded-lg hover:bg-blue-700">
+                <i data-lucide="plus" class="w-5 h-5 inline mr-1"></i> 建立示範資料
               </button>
             </div>` : `
             <div class="text-gray-700">已載入 ${totalProjects} 個專案。從左側選單瀏覽任務、行事曆與詳情。</div>
@@ -672,14 +777,46 @@
       if(window.lucide?.createIcons) try{ lucide.createIcons(); }catch{}
     }
 
-    // 其他視圖（tasks/calendar/report/community）可沿用原本邏輯，略。
+    // 占位畫面（避免點了壞掉）
+    function renderTasksPlaceholder(){
+      document.getElementById("main-content").innerHTML = `
+        <h2 class="text-3xl font-bold text-gray-800 mb-4 border-b pb-2 flex items-center"><i data-lucide="clipboard-check" class="w-7 h-7 mr-3 text-blue-800"></i>任務</h2>
+        <div class="bg-white p-6 rounded-xl shadow-lg text-gray-700">任務模組將於後續版本啟用。</div>`;
+      if(window.lucide?.createIcons) try{ lucide.createIcons(); }catch{}
+    }
+    function renderCalendarPlaceholder(){
+      document.getElementById("main-content").innerHTML = `
+        <h2 class="text-3xl font-bold text-gray-800 mb-4 border-b pb-2 flex items-center"><i data-lucide="calendar" class="w-7 h-7 mr-3 text-blue-800"></i>行事曆</h2>
+        <div class="bg-white p-6 rounded-xl shadow-lg text-gray-700">行事曆模組將於後續版本啟用。</div>`;
+      if(window.lucide?.createIcons) try{ lucide.createIcons(); }catch{}
+    }
+    function renderReportPlaceholder(){
+      document.getElementById("main-content").innerHTML = `
+        <h2 class="text-3xl font-bold text-gray-800 mb-4 border-b pb-2 flex items-center"><i data-lucide="file-text" class="w-7 h-7 mr-3 text-blue-800"></i>報告</h2>
+        <div class="bg-white p-6 rounded-xl shadow-lg text-gray-700">報告模組將於後續版本啟用。</div>`;
+      if(window.lucide?.createIcons) try{ lucide.createIcons(); }catch{}
+    }
+    function renderCommunityPlaceholder(){
+      document.getElementById("main-content").innerHTML = `
+        <h2 class="text-3xl font-bold text-gray-800 mb-4 border-b pb-2 flex items-center"><i data-lucide="messages-square" class="w-7 h-7 mr-3 text-blue-800"></i>資訊交流</h2>
+        <div class="bg-white p-6 rounded-xl shadow-lg text-gray-700">資訊交流模組將於後續版本啟用。</div>`;
+      if(window.lucide?.createIcons) try{ lucide.createIcons(); }catch{}
+    }
+    function renderProjectDetailsPlaceholder(projectId){
+      document.getElementById("main-content").innerHTML = `
+        <h2 class="text-3xl font-bold text-gray-800 mb-4 border-b pb-2 flex items-center"><i data-lucide="layout-dashboard" class="w-7 h-7 mr-3 text-blue-800"></i>專案詳情</h2>
+        <div class="bg-white p-6 rounded-xl shadow-lg text-gray-700">專案詳情模組將於後續版本啟用。ID：${projectId||'—'}</div>`;
+      if(window.lucide?.createIcons) try{ lucide.createIcons(); }catch{}
+    }
 
+    // 啟動
     window.addEventListener('DOMContentLoaded', () => {
       initFirebase().catch(e=>{
         logDbg('ERR','initFirebase failed', {code:e?.code, message:e?.message});
         landingLoading?.classList.add("hidden");
         btnGoogle?.removeAttribute('disabled');
         resetBtn?.classList.remove('hidden');
+        setBanner('error', '初始化失敗：' + (e?.message || '未知錯誤'));
       });
     });
 

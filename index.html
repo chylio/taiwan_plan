@@ -36,7 +36,7 @@
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/main.min.css">
   <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/index.global.min.js"></script>
 
-  <!-- 全域設定 -->
+  <!-- 全域設定（請依實際環境調整） -->
   <script>
     // Firebase 專案設定
     window.__firebase_config_object = {
@@ -56,7 +56,7 @@
     // SharePoint（Power Automate HTTP 觸發 URL）— 如需備份請替換
     window.__sharepoint_flow_url = "REPLACE_WITH_YOUR_POWER_AUTOMATE_HTTP_TRIGGER_URL";
 
-    // AI 週/月報 Apps Script Web App URL（已填入）
+    // AI 週/月報 Apps Script Web App URL
     window.__ai_summary_webapp_url = "https://script.google.com/macros/s/AKfycbzBaT08WiuMIpqVNrG70iTVMUFXY1X-1zSn0uKa3xgLa4KdUwFbL5q7xh5OwpJMAblAdQ/exec";
   </script>
 
@@ -265,6 +265,16 @@
     function tsToDateStr(v){ try{ if(!v) return ""; if (typeof v==="string") return v.slice(0,10); if (v?.toDate) return v.toDate().toISOString().slice(0,10); if (v instanceof Date) return v.toISOString().slice(0,10); return ""; }catch{ return ""; } }
     function overlapsRange(start,end,s,e){ if(!start && !end) return false; const aStart=start||end, aEnd=end||start, bStart=s||e, bEnd=e||s; if(!bStart && !bEnd) return true; if(!aStart||!aEnd||!bStart||!bEnd) return false; return (aStart<=bEnd)&&(bStart<=aEnd); }
     function inRange(d,s,e){ if(!d) return false; if(s && d<s) return false; if(e && d>e) return false; return true; }
+    function arrayToCsv(headers, rows){
+      const esc=(val)=>{ const s=(val===undefined||val===null)?"":String(val); const needQuote=/[",\r\n]/.test(s); const q=s.replace(/"/g,'""'); return needQuote?`"${q}"`:q; };
+      const head=headers.map(esc).join(",");
+      const body=rows.map(r=>headers.map(h=>esc(r[h])).join(",")).join("\r\n");
+      return head+"\r\n"+body;
+    }
+    function triggerDownloadCsv(csvText, filename){
+      const blob=new Blob(["\ufeff"+csvText],{type:"text/csv;charset=utf-8;"}); const url=URL.createObjectURL(blob);
+      const a=document.createElement("a"); a.href=url; a.download=filename; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+    }
 
     // GitHub Pages 判斷（略過 /notify）
     const IS_PAGES = location.hostname.endsWith(".github.io");
@@ -362,33 +372,29 @@
       }
     }
 
-    // Google 登入：Popup → 失敗 fallback Redirect
+    // Google 登入：根據環境決定先走 Redirect（最穩定）
+    const FORCE_REDIRECT =
+      location.hostname.endsWith('github.io') ||
+      (/Safari/i.test(navigator.userAgent) && !/Chrome/i.test(navigator.userAgent));
+
     window.signInWithGoogle = async function(){
+      const provider = new GoogleAuthProvider();
+      provider.setCustomParameters({ prompt: 'select_account' });
+
+      if (FORCE_REDIRECT) {
+        await signInWithRedirect(auth, provider);
+        return;
+      }
+
       try{
-        const provider = new GoogleAuthProvider();
-        provider.setCustomParameters({ prompt: 'select_account' });
         const cred = await signInWithPopup(auth, provider);
         if(cred?.user) applyUser(cred.user); // 立即導向儀表板
       }catch(e){
-        const code = e?.code || "";
-        if(code.includes("auth/unauthorized-domain")){
-          showModal("登入失敗", "此網域未加入 Firebase Auth 的授權網域。請到 Firebase Console > Authentication > 設定 > 授權網域，加入你的網站網域（例如 xxx.github.io 或自訂網域）。");
-          return;
-        }
-        const shouldRedirect = [
-          "auth/popup-blocked","auth/cancelled-popup-request","auth/operation-not-supported-in-this-environment",
-          "auth/idpiframe-initialization-failed","auth/internal-error"
-        ].some(p => code.includes(p));
-        if(shouldRedirect){
-          try{
-            const provider = new GoogleAuthProvider();
-            provider.setCustomParameters({ prompt: 'select_account' });
-            await signInWithRedirect(auth, provider);
-          }catch(err2){
-            showModal("登入失敗", err2?.message || String(err2));
-          }
-        }else{
-          showModal("登入失敗", e?.message || String(e));
+        // 若 popup 被擋或環境不支援，回退到 redirect
+        try{
+          await signInWithRedirect(auth, provider);
+        }catch(e2){
+          showModal("登入失敗", e2?.message || String(e2));
         }
       }
     };
@@ -1210,16 +1216,6 @@
       document.getElementById("btn-ai-week")?.addEventListener("click", ()=> generateAIReport("week"));
       document.getElementById("btn-ai-month")?.addEventListener("click", ()=> generateAIReport("month"));
 
-      function arrayToCsv(headers, rows){
-        const esc=(val)=>{ const s=(val===undefined||val===null)?"":String(val); const needQuote=/[",\r\n]/.test(s); const q=s.replace(/"/g,'""'); return needQuote?`"${q}"`:q; };
-        const head=headers.map(esc).join(",");
-        const body=rows.map(r=>headers.map(h=>esc(r[h])).join(",")).join("\r\n");
-        return head+"\r\n"+body;
-      }
-      function triggerDownloadCsv(csvText, filename){
-        const blob=new Blob(["\ufeff"+csvText],{type:"text/csv;charset=utf-8;"}); const url=URL.createObjectURL(blob);
-        const a=document.createElement("a"); a.href=url; a.download=filename; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
-      }
       function getHeadersForSource(source){
         if(source==="projects"){ return { headers:["id","title","manager","budget","personnelBudget","operatingBudget","equipmentBudget","progress","status","createdAt","reporterId"] }; }
         if(source==="tasks"){ return { headers:["id","projectId","taskName","assignee","dueDate","status","createdAt","updatedAt"] }; }

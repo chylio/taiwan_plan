@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>深耕計畫專案管理儀表板</title>
 
-  <!-- CSP：擴充常用來源，避免 Storage/頭像被擋 -->
+  <!-- CSP：擴充常用來源，避免 Storage/頭像/Google 登入被擋 -->
   <meta http-equiv="Content-Security-Policy"
         content="default-src 'self';
                  script-src 'self' 'unsafe-inline'
@@ -45,12 +45,13 @@
                  object-src 'none';
                  base-uri 'self';">
 
+  <!-- UI 套件 -->
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://unpkg.com/lucide@0.469.0/dist/umd/lucide.js"></script>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/main.min.css">
   <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/index.global.min.js"></script>
 
-  <!-- 環境設定（依實際專案調整） -->
+  <!-- 專案設定（請依你的 Firebase 專案調整） -->
   <script>
     window.__firebase_config_object = {
       apiKey: "AIzaSyCIXWS0ynK4GdsdQIXkOs3fHuzAendZ7LA",
@@ -217,7 +218,7 @@
     </main>
   </div>
 
-  <!-- Debug 面板 -->
+  <!-- Debug 面板（網址加 ?debug=1 開啟） -->
   <div id="debug">
     <header>
       <div>Auth Debug<span id="dbg-state" class="pill">init</span></div>
@@ -302,9 +303,6 @@
     const emailInput= document.getElementById('email');
     const passInput = document.getElementById('password');
     const emailMsg  = document.getElementById('email-msg');
-    const btnEmailSignIn = document.getElementById('btn-email-signin');
-    const btnEmailSignUp = document.getElementById('btn-email-signup');
-    const btnReset = document.getElementById('btn-reset');
 
     const statusBanner = document.getElementById('status-banner');
 
@@ -346,7 +344,7 @@
     }
     function clearBanner(){ if(statusBanner){ statusBanner.style.display='none'; statusBanner.innerHTML=''; } }
 
-    // ============ 使用者 ============
+    // ============ 使用者 UI ============
     function updateUserChips(){
       const nameEl = document.getElementById("user-display-name");
       const emailEl= document.getElementById("user-email");
@@ -364,6 +362,12 @@
         avatar?.classList.add("hidden");
         if(initial){ initial.textContent = (displayName[0]||"U").toUpperCase(); initial.classList.remove("hidden"); }
       }
+    }
+
+    function showAppShell(show){
+      if(show){ landing.classList.add("hidden"); appShell.classList.remove("hidden"); }
+      else{ appShell.classList.add("hidden"); landing.classList.remove("hidden"); }
+      if(window.lucide?.createIcons) try{ lucide.createIcons(); }catch{}
     }
 
     function applyUser(user){
@@ -462,7 +466,7 @@
         setEmailMsg(err?.message || "登入失敗", false);
       }
     });
-    btnEmailSignUp.addEventListener('click', async ()=>{
+    document.getElementById('btn-email-signup').addEventListener('click', async ()=>{
       try{
         const email = emailInput.value.trim();
         const pass  = passInput.value;
@@ -474,7 +478,7 @@
         setEmailMsg(err?.message || "註冊失敗", false);
       }
     });
-    btnReset.addEventListener('click', async ()=>{
+    document.getElementById('btn-reset').addEventListener('click', async ()=>{
       try{
         const email = (emailInput.value || "").trim();
         if(!email){ setEmailMsg("請先輸入 Email 再點重設密碼。", false); return; }
@@ -530,7 +534,6 @@
           else logDbg('INFO','getRedirectResult '+(rr?.user?'user':'empty'));
         }catch(e){
           logDbg('ERR','getRedirectResult error', {code:e?.code, message:e?.message});
-          // 常見：missing initial state / unauthorized-domain
           if(e?.code === 'auth/unauthorized-domain'){
             setBanner('error','Google 登入被拒（unauthorized-domain）。請到 Firebase Console → Authentication → Settings → Authorized domains 加入 chylio.github.io。');
           }else if((e?.message||'').toLowerCase().includes('initial state')){
@@ -597,7 +600,7 @@
     function isAuthorized(){ return !!currentUserId; }
 
     // ============ 資料/視圖 ============
-    let managers=[]; const DEFAULT_MANAGERS=["蔡雅雯","陳乃菁","吳曉琪","蘇琬淳","楊穎潔"];
+    let managers=[]; const DEFAULT_MANAGERS=["蔡雅雯","陳乃菁","吳曉琪","蘇琬淳","楊穎潔","王小明","李小華","張曉安"];
     let currentView="dashboard",selectedProjectId=null,calendarInstance=null;
     let projects=[],tasks=[],events=[],files=[],communityPosts=[],budgetCaps={personnelCap:0,operatingCap:0,equipmentCap:0};
 
@@ -754,7 +757,7 @@
             <div class="w-full bg-gray-200 rounded-full h-3"><div class="progress-bar h-3 rounded-full ${barClass(oRate,oRemain)}" style="width:${(oRate*100).toFixed(0)}%"></div></div>
             <div class="mt-2 text-sm text-gray-700 flex justify-between"><span>已用：<strong>${fmtMoney(operatingUsed)}</strong>（${(oRate*100).toFixed(0)}%）</span><span>${oRemain>=0?`餘額：<strong>${fmtMoney(oRemain)}</strong>`:`超支：<strong class="text-red-600">${fmtMoney(-oRemain)}</strong>`}</span></div>
           </div>
-          <div class="project-card bg白 p-6 rounded-xl shadow-lg border-t-4 border-blue-800">
+          <div class="project-card bg-white p-6 rounded-xl shadow-lg border-t-4 border-blue-800">
             <div class="flex items-center justify-between mb-2"><div class="font-semibold text-gray-800">設備費總預算</div><div class="text-sm text-gray-500">${fmtMoney(ec)}</div></div>
             <div class="w-full bg-gray-200 rounded-full h-3"><div class="progress-bar h-3 rounded-full ${barClass(eRate,eRemain)}" style="width:${(eRate*100).toFixed(0)}%"></div></div>
             <div class="mt-2 text-sm text-gray-700 flex justify-between"><span>已用：<strong>${fmtMoney(equipmentUsed)}</strong>（${(eRate*100).toFixed(0)}%）</span><span>${eRemain>=0?`餘額：<strong>${fmtMoney(eRemain)}</strong>`:`超支：<strong class="text-red-600">${fmtMoney(-eRemain)}</strong>`}</span></div>
@@ -815,7 +818,6 @@
         logDbg('ERR','initFirebase failed', {code:e?.code, message:e?.message});
         landingLoading?.classList.add("hidden");
         btnGoogle?.removeAttribute('disabled');
-        resetBtn?.classList.remove('hidden');
         setBanner('error', '初始化失敗：' + (e?.message || '未知錯誤'));
       });
     });

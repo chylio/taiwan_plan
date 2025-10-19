@@ -144,7 +144,7 @@
       <div class="w-full">
         <div class="flex items-center justify-between px-3 mb-2">
           <button class="w-10 h-10 rounded-xl bg-gradient-to-br from-pink-500 via-purple-500 to-indigo-500 shadow-md" title="Home" onclick="setView('dashboard')"></button>
-        <button id="btn-toggle" class="p-2 rounded-lg hover:bg-white/10" title="收合/展開" onclick="toggleSidebar()">
+          <button id="btn-toggle" class="p-2 rounded-lg hover:bg-white/10" title="收合/展開" onclick="toggleSidebar()">
             <i data-lucide="panel-left-close" class="w-5 h-5"></i>
           </button>
         </div>
@@ -221,7 +221,6 @@
     const APP_ID = window.__app_id || "default-app-id";
     const firebaseConfig = window.__firebase_config_object || null;
     const APP_CHECK_SITE_KEY = window.__app_check_site_key || "";
-    const AUTH_MODE = (window.__auth_mode || "google").toLowerCase();
     const SHAREPOINT_FLOW_URL   = window.__sharepoint_flow_url || "";
     const AI_SUMMARY_WEBAPP_URL = window.__ai_summary_webapp_url || "";
 
@@ -267,7 +266,7 @@
     function overlapsRange(start,end,s,e){ if(!start && !end) return false; const aStart=start||end, aEnd=end||start, bStart=s||e, bEnd=e||s; if(!bStart && !bEnd) return true; if(!aStart||!aEnd||!bStart||!bEnd) return false; return (aStart<=bEnd)&&(bStart<=aEnd); }
     function inRange(d,s,e){ if(!d) return false; if(s && d<s) return false; if(e && d>e) return false; return true; }
 
-    // Pages 環境的 Teams 通知略過
+    // GitHub Pages 判斷（略過 /notify）
     const IS_PAGES = location.hostname.endsWith(".github.io");
     async function sendTeamsNotification(title,text,color="0078D4"){
       if(IS_PAGES) return;
@@ -291,9 +290,12 @@
       sb.style.width = nextExpanded ? '240px' : '72px';
       if(main) main.style.marginLeft = nextExpanded ? '240px' : '72px';
       const btn = document.getElementById('btn-toggle');
-      if(btn){ btn.innerHTML = nextExpanded ? '<i data-lucide="panel-left-close" class="w-5 h-5"></i>' : '<i data-lucide="panel-left-open" class="w-5 h-5"></i>'; }
-      if(window.lucide?.createIcons) lucide.createIcons();
+      if(btn){
+        btn.title = nextExpanded ? '收合' : '展開';
+        btn.innerHTML = nextExpanded ? '<i data-lucide="panel-left-close" class="w-5 h-5"></i>' : '<i data-lucide="panel-left-open" class="w-5 h-5"></i>';
+      }
       try{ localStorage.setItem('sidebarExpanded', nextExpanded ? '1' : '0'); }catch{}
+      if(window.lucide?.createIcons) lucide.createIcons();
     };
 
     // 顯示/隱藏 App 殼與登入首頁
@@ -303,7 +305,7 @@
       if(window.lucide?.createIcons) lucide.createIcons();
     }
 
-    // 登入資訊顯示（Sidebar 與 Landing 卡片）
+    // 更新使用者 UI（Sidebar 與 Landing 卡片）
     function updateUserChips(){
       const boxName = document.getElementById("user-display-name");
       const boxEmail= document.getElementById("user-email");
@@ -325,11 +327,6 @@
       }
 
       // Landing 卡片
-      const landingUser = document.getElementById("landing-user");
-      const landingName = document.getElementById("landing-name");
-      const landingEmail= document.getElementById("landing-email");
-      const landingAvatar= document.getElementById("landing-avatar");
-      const landingInitial= document.getElementById("landing-initial");
       if(landingUser){
         landingUser.classList.remove("hidden");
         if(landingName) landingName.textContent = displayName;
@@ -346,26 +343,50 @@
       }
     }
 
+    // 封裝：登入狀態套用並進入儀表板（關鍵修正）
+    function applyUser(user){
+      if(user){
+        currentUserId = user.uid;
+        userProfile = {
+          displayName: user.displayName || "",
+          email: user.email || "",
+          photoURL: user.photoURL || ""
+        };
+        updateUserChips();
+        showAppShell(true);
+        if(!listenersStarted) initializeSystem(true);
+      }else{
+        currentUserId = "";
+        userProfile = { displayName:"", email:"", photoURL:"" };
+        showAppShell(false);
+      }
+    }
+
     // Google 登入：Popup → 失敗 fallback Redirect
     window.signInWithGoogle = async function(){
       try{
         const provider = new GoogleAuthProvider();
         provider.setCustomParameters({ prompt: 'select_account' });
-        await signInWithPopup(auth, provider);
+        const cred = await signInWithPopup(auth, provider);
+        if(cred?.user) applyUser(cred.user); // 立即導向儀表板
       }catch(e){
         const code = e?.code || "";
+        if(code.includes("auth/unauthorized-domain")){
+          showModal("登入失敗", "此網域未加入 Firebase Auth 的授權網域。請到 Firebase Console > Authentication > 設定 > 授權網域，加入你的網站網域（例如 xxx.github.io 或自訂網域）。");
+          return;
+        }
         const shouldRedirect = [
-          "auth/popup-blocked",
-          "auth/cancelled-popup-request",
-          "auth/operation-not-supported-in-this-environment",
-          "auth/idpiframe-initialization-failed",
-          "auth/unauthorized-domain",
-          "auth/internal-error"
+          "auth/popup-blocked","auth/cancelled-popup-request","auth/operation-not-supported-in-this-environment",
+          "auth/idpiframe-initialization-failed","auth/internal-error"
         ].some(p => code.includes(p));
         if(shouldRedirect){
-          const provider = new GoogleAuthProvider();
-          provider.setCustomParameters({ prompt: 'select_account' });
-          await signInWithRedirect(auth, provider);
+          try{
+            const provider = new GoogleAuthProvider();
+            provider.setCustomParameters({ prompt: 'select_account' });
+            await signInWithRedirect(auth, provider);
+          }catch(err2){
+            showModal("登入失敗", err2?.message || String(err2));
+          }
         }else{
           showModal("登入失敗", e?.message || String(e));
         }
@@ -373,7 +394,7 @@
     };
 
     window.appSignOut = async function(){
-      try{ await signOut(auth); showModal("已登出","您已成功登出。"); }
+      try{ await signOut(auth); showModal("已登出","您已成功登出。"); applyUser(null); }
       catch(e){ showModal("登出失敗", e?.message || String(e)); }
     };
 
@@ -391,24 +412,17 @@
       await setPersistence(auth, browserLocalPersistence).catch(()=>{});
 
       // 正在還原登入狀態時顯示提示
-      const landingLoading=document.getElementById("landing-loading");
       landingLoading?.classList.remove("hidden");
 
       onAuthStateChanged(auth, async (user)=>{
         isAuthReady = true;
         landingLoading?.classList.add("hidden");
-        if(user){
-          currentUserId = user.uid;
-          userProfile = { displayName:user.displayName||"", email:user.email||"", photoURL:user.photoURL||"" };
-          updateUserChips();
-          showAppShell(true);
-          if(!listenersStarted) initializeSystem(true);
-          await getRedirectResult(auth).catch(()=>{});
-        }else{
-          currentUserId = ""; userProfile = { displayName:"", email:"", photoURL:"" };
-          showAppShell(false);
-          if(window.lucide?.createIcons) lucide.createIcons();
-        }
+        applyUser(user);
+        // 兼容 redirect 流程
+        try{
+          const rr = await getRedirectResult(auth);
+          if(rr?.user) applyUser(rr.user);
+        }catch{}
       });
     }
 
@@ -416,7 +430,7 @@
 
     // ================== 你的既有功能（資料、視圖） ==================
     let managers=[]; // [{id,name,email?,title?}]
-    const DEFAULT_MANAGERS = ["蔡雅雯","陳乃菁","吳曉琪","蘇琬淳","楊穎潔"];
+    const DEFAULT_MANAGERS = ["蔡雅雯","陳乃菁","吳曉琪","蘇琬淳","楊穎潔","王小明","李小華","張曉安"];
 
     let currentView="dashboard",selectedProjectId=null,calendarInstance=null;
     let projects=[],tasks=[],events=[],files=[],communityPosts=[],budgetCaps={personnelCap:0,operatingCap:0,equipmentCap:0};

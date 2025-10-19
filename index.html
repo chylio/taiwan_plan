@@ -7,7 +7,7 @@
 
   <meta http-equiv="Content-Security-Policy"
         content="default-src 'self';
-                 script-src 'self' 'unsafe-inline' https://www.gstatic.com https://cdn.tailwindcss.com https://unpkg.com https://cdn.jsdelivr.net;
+                 script-src 'self' 'unsafe-inline' https://www.gstatic.com https://cdn.tailwindcss.com https://unpkg.com https://cdn.jsdelivr.net https://www.google.com;
                  connect-src 'self'
                               https://firestore.googleapis.com
                               https://identitytoolkit.googleapis.com
@@ -16,6 +16,7 @@
                               https://*.googleapis.com
                               https://apis.google.com
                               https://*.gstatic.com
+                              https://accounts.google.com
                               https://firebasestorage.googleapis.com
                               https://content-firebaseappcheck.googleapis.com
                               https://script.google.com
@@ -24,17 +25,15 @@
                               https://*.azure-apim.net;
                  img-src 'self' data: https:;
                  style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net;
-                 frame-src 'self';
+                 frame-src https://www.google.com https://www.gstatic.com https://accounts.google.com;
                  object-src 'none';
                  base-uri 'self';">
 
-  <!-- UI 套件 -->
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://unpkg.com/lucide@0.469.0/dist/umd/lucide.js"></script>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/main.min.css">
   <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/index.global.min.js"></script>
 
-  <!-- 專案設定 -->
   <script>
     window.__firebase_config_object = {
       apiKey: "AIzaSyCIXWS0ynK4GdsdQIXkOs3fHuzAendZ7LA",
@@ -45,14 +44,17 @@
       appId: "1:874700126533:web:5461432d0169b7de6ee62c"
     };
     window.__app_id = "taiwanplan-f7566";
-    // 若只允許預先建立帳號，改為 false 會隱藏註冊按鈕
-    window.__ALLOW_SIGNUP = true;
+    window.__auth_mode = "google";
+    window.__sharepoint_flow_url = "REPLACE_WITH_YOUR_POWER_AUTOMATE_HTTP_TRIGGER_URL";
+    window.__ai_summary_webapp_url = "https://script.google.com/macros/s/AKfycbzBaT08WiuMIpqVNrG70iTVMUFXY1X-1zSn0uKa3xgLa4KdUwFbL5q7xh5OwpJMAblAdQ/exec";
+  </script>
 
+  <script>
     tailwind.config = {
       theme: {
         extend: {
-          fontFamily: { sans: ["Inter", "Noto Sans TC", "sans-serif"] },
-          colors: { "primary-blue":"#1e40af", "secondary-green":"#059669", "accent-orange":"#ea580c" }
+          fontFamily: { sans: ["Inter","Noto Sans TC","sans-serif"] },
+          colors: { "primary-blue":"#1e40af","secondary-green":"#059669","accent-orange":"#ea580c" }
         }
       }
     }
@@ -62,125 +64,99 @@
     .project-card{box-shadow:0 4px 6px -1px rgba(0,0,0,.1),0 2px 4px -1px rgba(0,0,0,.06);transition:transform .2s}
     .project-card:hover{transform:translateY(-2px)}
     .progress-bar{transition:width .5s ease-in-out}
-    #app-sidebar { overflow: hidden; }
-    #app-sidebar.expanded { width: 240px !important; }
-    #app-sidebar.collapsed { width: 72px !important; }
-    #app-sidebar .nav-item{display:flex;align-items:center;gap:.75rem;width:100%;padding:.5rem .5rem;border-radius:.75rem;color:#e5e7eb;transition: background-color .15s, color .15s}
-    #app-sidebar .nav-item:hover{ background-color: rgba(255,255,255,.08); color:#fff; }
-    #app-sidebar .nav-item.active{ background-color: rgba(59,130,246,.18); color:#fff; }
-    #app-sidebar .nav-icon{ width:22px; height:22px; stroke-width:2.2; }
-    #app-sidebar svg{ stroke: currentColor; }
-    #app-sidebar .nav-label{ display:inline; white-space:nowrap; font-weight:600; font-size:.875rem; }
-    #app-sidebar.collapsed .nav-label{ display:none; }
-    #app-main{ transition: margin-left .2s ease; }
-    /* Modal */
-    .modal-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;z-index:70}
-    .modal-card{background:#fff;border-radius:14px;max-width:28rem;width:calc(100vw - 24px);padding:16px}
+    #app-sidebar{overflow:hidden}
+    #app-sidebar.expanded{width:240px!important}
+    #app-sidebar.collapsed{width:72px!important}
+    #app-sidebar .nav-item{display:flex;align-items:center;gap:.75rem;width:100%;padding:.5rem .5rem;border-radius:.75rem;color:#e5e7eb;transition:background-color .15s,color .15s}
+    #app-sidebar .nav-item:hover{background-color:rgba(255,255,255,.08);color:#fff}
+    #app-sidebar .nav-item.active{background-color:rgba(59,130,246,.18);color:#fff}
+    #app-sidebar .nav-label{display:inline;white-space:nowrap;font-weight:600;font-size:.875rem}
+    #app-sidebar.collapsed .nav-label{display:none}
+    #app-main{transition:margin-left .2s ease}
+    .landing-bg{background:radial-gradient(1200px 600px at 85% 85%,#7c3aed30,transparent 60%),radial-gradient(1000px 500px at 0% 100%,#ec489930,transparent 55%),linear-gradient(180deg,#ffffff 0%,#f7f7fb 100%)}
   </style>
 </head>
-<body class="bg-gray-50 font-sans flex min-h-screen">
-
-  <!-- 側欄 -->
-  <aside id="app-sidebar" class="fixed inset-y-2 left-2 z-10 rounded-2xl bg-black text-white shadow-2xl flex flex-col justify-between py-3 transition-all duration-200 expanded" style="width:240px;">
-    <div class="w-full">
-      <div class="flex items-center justify-between px-3 mb-2">
-        <button class="w-10 h-10 rounded-xl bg-gradient-to-br from-pink-500 via-purple-500 to-indigo-500 shadow-md" title="Home" onclick="setView('dashboard')"></button>
-        <button id="btn-toggle" class="p-2 rounded-lg hover:bg-white/10" title="收合/展開" onclick="toggleSidebar()">
-          <i data-lucide="panel-left-close" class="nav-icon"></i>
-        </button>
-      </div>
-      <nav class="w-full flex flex-col items-stretch space-y-1 px-1">
-        <button class="nav-item group" data-view="dashboard" title="Home" onclick="setView('dashboard')">
-          <i data-lucide="house" class="nav-icon"></i><span class="nav-label">Home</span>
-        </button>
-        <button class="nav-item group" data-view="tasks" title="Planner" onclick="setView('tasks')">
-          <i data-lucide="calendar-days" class="nav-icon"></i><span class="nav-label">Planner</span>
-        </button>
-        <button class="nav-item group" data-view="calendar" title="行事曆" onclick="setView('calendar')">
-          <i data-lucide="calendar" class="nav-icon"></i><span class="nav-label">行事曆</span>
-        </button>
-        <button class="nav-item group" data-view="report" title="Brain" onclick="setView('report')">
-          <i data-lucide="brain" class="nav-icon"></i><span class="nav-label">Brain</span>
-        </button>
-        <button class="nav-item group" data-view="community" title="資訊交流" onclick="setView('community')">
-          <i data-lucide="messages-square" class="nav-icon"></i><span class="nav-label">資訊交流</span>
-        </button>
-        <button class="nav-item group" data-view="details" title="專案詳情" onclick="setView('details')">
-          <i data-lucide="layout-dashboard" class="nav-icon"></i><span class="nav-label">專案詳情</span>
-        </button>
-      </nav>
-    </div>
-
-    <div class="w-full flex flex-col items-stretch space-y-1 px-1">
-      <div id="user-box" class="flex items-center gap-2 px-2 py-2 rounded-lg bg-white/10 mx-1 hidden">
-        <div class="w-8 h-8 rounded-full bg-gray-200 overflow-hidden flex-shrink-0">
-          <img id="user-avatar" alt="" class="w-full h-full object-cover hidden">
-          <div id="user-initial" class="w-full h-full flex items-center justify-center text-black/70 font-bold text-sm"></div>
-        </div>
-        <div class="min-w-0">
-          <div id="user-display-name" class="text-sm font-semibold truncate"></div>
-          <div id="user-email" class="text-xs opacity-80 truncate"></div>
+  <section id="landing" class="landing-bg min-h-screen flex items-center justify-center px-4">
+    <div class="max-w-md w-full">
+      <div class="text-center mb-6">
+        <div class="inline-flex items-center gap-2 text-2xl font-extrabold text-primary-blue">
+          <i data-lucide="sparkles" class="w-6 h-6"></i> 深耕計畫 PM
         </div>
       </div>
-
-      <button id="btn-signin" class="nav-item group" title="Email 登入" onclick="openAuthModal()">
-        <i data-lucide="log-in" class="nav-icon"></i><span class="nav-label">登入</span>
-      </button>
-      <button id="btn-signout" class="nav-item group hidden" title="登出" onclick="appSignOut()">
-        <i data-lucide="log-out" class="nav-icon"></i><span class="nav-label">登出</span>
-      </button>
+      <div class="bg-white/90 backdrop-blur rounded-2xl shadow-2xl p-8">
+        <h1 class="text-3xl font-extrabold text-gray-900 text-center">Welcome back! 歡迎回來！</h1>
+        <p class="text-sm text-gray-500 text-center mt-2">使用 Google 帳號登入以進入儀表板</p>
+        <div id="landing-user" class="hidden mt-6">
+          <div class="flex items-center gap-3 p-3 rounded-xl bg-gray-50 border">
+            <div class="w-10 h-10 rounded-full bg-gray-200 overflow-hidden">
+              <img id="landing-avatar" alt="" class="w-full h-full object-cover hidden">
+              <div id="landing-initial" class="w-full h-full flex items-center justify-center text-black/70 font-bold">U</div>
+            </div>
+            <div class="min-w-0">
+              <div id="landing-name" class="font-semibold truncate"></div>
+              <div id="landing-email" class="text-xs text-gray-500 truncate"></div>
+            </div>
+          </div>
+        </div>
+        <button id="btn-landing-login" onclick="signInWithGoogle()" class="mt-6 w-full py-3 rounded-xl bg-primary-blue hover:bg-blue-700 text-white font-semibold flex items-center justify-center gap-2">
+          <img alt="" src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" class="w-5 h-5"/> 使用 Google 登入
+        </button>
+        <div id="landing-loading" class="hidden mt-6 text-center text-sm text-gray-600">登入狀態還原中，請稍候…</div>
+      </div>
+      <p class="text-xs text-gray-400 text-center mt-6">本網站使用 Firebase Auth 進行登入；登入後方能讀取/寫入資料。</p>
     </div>
-  </aside>
+  </section>
 
-  <!-- 主內容 -->
-  <main id="app-main" class="flex-grow p-8" style="margin-left:240px;">
-    <div id="main-content" class="w-full"></div>
-  </main>
+  <div id="app-shell" class="hidden">
+    <aside id="app-sidebar" class="fixed inset-y-2 left-2 z-10 rounded-2xl bg-black text-white shadow-2xl flex flex-col justify-between py-3 transition-all duration-200 expanded" style="width:240px;">
+      <div class="w-full">
+        <div class="flex items-center justify-between px-3 mb-2">
+          <button class="w-10 h-10 rounded-xl bg-gradient-to-br from-pink-500 via-purple-500 to-indigo-500 shadow-md" title="Home" onclick="setView('dashboard')"></button>
+          <button id="btn-toggle" class="p-2 rounded-lg hover:bg-white/10" title="收合/展開" onclick="toggleSidebar()"><i data-lucide="panel-left-close" class="w-5 h-5"></i></button>
+        </div>
+        <nav class="w-full flex flex-col items-stretch space-y-1 px-1">
+          <button class="nav-item group" data-view="dashboard" onclick="setView('dashboard')"><i data-lucide="house" class="w-5 h-5"></i><span class="nav-label">Home</span></button>
+          <button class="nav-item group" data-view="tasks" onclick="setView('tasks')"><i data-lucide="calendar-days" class="w-5 h-5"></i><span class="nav-label">Planner</span></button>
+          <button class="nav-item group" data-view="calendar" onclick="setView('calendar')"><i data-lucide="calendar" class="w-5 h-5"></i><span class="nav-label">行事曆</span></button>
+          <button class="nav-item group" data-view="report" onclick="setView('report')"><i data-lucide="brain" class="w-5 h-5"></i><span class="nav-label">Brain</span></button>
+          <button class="nav-item group" data-view="community" onclick="setView('community')"><i data-lucide="messages-square" class="w-5 h-5"></i><span class="nav-label">資訊交流</span></button>
+          <button class="nav-item group" data-view="details" onclick="setView('details')"><i data-lucide="layout-dashboard" class="w-5 h-5"></i><span class="nav-label">專案詳情</span></button>
+        </nav>
+      </div>
+      <div class="w-full flex flex-col items-stretch space-y-1 px-1">
+        <div id="user-box" class="flex items-center gap-2 px-2 py-2 rounded-lg bg-white/10 mx-1">
+          <div class="w-8 h-8 rounded-full bg-gray-200 overflow-hidden flex-shrink-0">
+            <img id="user-avatar" alt="" class="w-full h-full object-cover hidden">
+            <div id="user-initial" class="w-full h-full flex items-center justify-center text-black/70 font-bold text-sm"></div>
+          </div>
+          <div class="min-w-0">
+            <div id="user-display-name" class="text-sm font-semibold truncate"></div>
+            <div id="user-email" class="text-xs opacity-80 truncate"></div>
+          </div>
+        </div>
+        <button id="btn-signout" class="nav-item group" onclick="appSignOut()"><i data-lucide="log-out" class="w-5 h-5"></i><span class="nav-label">登出</span></button>
+      </div>
+    </aside>
 
-  <!-- 一般提示 Modal -->
+    <main id="app-main" class="flex-grow p-8" style="margin-left:240px;">
+      <div id="main-content" class="w-full"></div>
+    </main>
+  </div>
+
   <div id="custom-modal" class="fixed inset-0 bg-gray-900 bg-opacity-75 z-50 hidden items-center justify-center">
     <div class="bg-white rounded-xl p-6 w-full max-w-sm shadow-2xl transform transition-all duration-300 scale-95 opacity-0" id="modal-content-wrapper">
       <h3 id="modal-title" class="text-xl font-bold mb-4 text-primary-blue">提示</h3>
       <p id="modal-message" class="text-gray-700 mb-6"></p>
-      <div class="flex justify-end space-x-3">
-        <button id="modal-confirm-btn" class="px-4 py-2 bg-primary-blue text-white rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500">確認</button>
-      </div>
+      <div class="flex justify-end"><button id="modal-confirm-btn" class="px-4 py-2 bg-primary-blue text-white rounded-lg hover:bg-blue-700">確認</button></div>
     </div>
   </div>
 
-  <!-- Email/Password 登入 Modal -->
-  <div id="auth-modal" class="modal-backdrop hidden">
-    <div class="modal-card">
-      <div class="flex items-center justify-between mb-3">
-        <div class="text-lg font-bold">Email 登入</div>
-        <button class="px-2 py-1 bg-gray-100 rounded" onclick="closeAuthModal()">關閉</button>
-      </div>
-      <div class="space-y-3">
-        <div>
-          <label class="text-sm text-gray-600">Email</label>
-          <input id="auth-email" type="email" class="w-full border rounded-lg p-2" placeholder="you@example.com">
-        </div>
-        <div>
-          <label class="text-sm text-gray-600">密碼</label>
-          <input id="auth-pass" type="password" class="w-full border rounded-lg p-2" placeholder="至少 6 碼">
-        </div>
-        <div id="auth-msg" class="text-sm h-5"></div>
-        <div class="flex flex-wrap gap-2">
-          <button class="btn-primary px-3 py-2 rounded bg-primary-blue text-white" onclick="handleEmailSignIn()">登入</button>
-          <button id="btn-auth-signup" class="btn px-3 py-2 rounded bg-gray-100" onclick="handleEmailSignUp()">註冊</button>
-          <button class="btn px-3 py-2 rounded bg-gray-100" onclick="handlePasswordReset()">忘記密碼</button>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- App 腳本 -->
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
     import { initializeAppCheck, ReCaptchaV3Provider } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app-check.js";
     import {
-      getAuth, onAuthStateChanged, signOut,
-      createUserWithEmailAndPassword, signInWithEmailAndPassword, sendPasswordResetEmail
+      getAuth, onAuthStateChanged, GoogleAuthProvider,
+      signInWithPopup, signInWithRedirect, getRedirectResult, signOut, setPersistence, browserLocalPersistence
     } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
     import {
       getFirestore, doc, addDoc, setDoc, updateDoc, deleteDoc,
@@ -192,20 +168,20 @@
 
     setLogLevel('error');
 
-    // 全域狀態
     let db, auth, storage;
     let currentUserId = "";
     let isAuthReady = false;
     let listenersStarted = false;
     let userProfile = { displayName:"", email:"", photoURL:"" };
 
-    // 設定
     const APP_ID = window.__app_id || "default-app-id";
     const firebaseConfig = window.__firebase_config_object || null;
     const APP_CHECK_SITE_KEY = window.__app_check_site_key || "";
-    const ALLOW_SIGNUP = window.__ALLOW_SIGNUP !== false;
+    const AUTH_MODE = (window.__auth_mode || "google").toLowerCase();
 
-    // Firestore 路徑
+    const SHAREPOINT_FLOW_URL   = window.__sharepoint_flow_url || "";
+    const AI_SUMMARY_WEBAPP_URL = window.__ai_summary_webapp_url || "";
+
     const PROJECTS_COLLECTION_PATH = `artifacts/${APP_ID}/public/data/project_metadata`;
     const TASKS_COLLECTION_PATH    = `artifacts/${APP_ID}/public/data/project_tasks`;
     const EVENTS_COLLECTION_PATH   = `artifacts/${APP_ID}/public/data/calendar_events`;
@@ -216,6 +192,7 @@
 
     const DEFAULT_MANAGERS = ["蔡雅雯","陳乃菁","吳曉琪","蘇琬淳","楊穎潔","王小明","李小華","張曉安"];
     let managers = [];
+
     let currentView = "dashboard";
     let projects = [];
     let tasks = [];
@@ -225,13 +202,23 @@
     let budgetCaps = { personnelCap: 0, operatingCap: 0, equipmentCap: 0 };
     let selectedProjectId = null;
     let calendarInstance = null;
-
-    // 工具
-    function escapeHtml(str){ if(str==null) return ""; return String(str).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#039;"); }
+    function escapeHtml(str){
+      if(str==null) return "";
+      return String(str).replace(/&/g,"&amp;").replace(/</g,"&lt;")
+                        .replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#039;");
+    }
     function showModal(title, message){
-      const t=document.getElementById("modal-title"), m=document.getElementById("modal-message"), modal=document.getElementById("custom-modal"), w=document.getElementById("modal-content-wrapper");
-      t.textContent=title||"提示"; m.textContent=message||""; document.getElementById("modal-confirm-btn").onclick=()=>{w.classList.remove("scale-100","opacity-100");w.classList.add("scale-95","opacity-0");setTimeout(()=>modal.classList.add("hidden"),300);};
-      modal.classList.remove("hidden"); modal.classList.add("flex"); setTimeout(()=>{w.classList.remove("scale-95","opacity-0"); w.classList.add("scale-100","opacity-100");},50);
+      document.getElementById("modal-title").textContent = title || "提示";
+      document.getElementById("modal-message").textContent = message || "";
+      const modal = document.getElementById("custom-modal");
+      const wrapper = document.getElementById("modal-content-wrapper");
+      document.getElementById("modal-confirm-btn").onclick = () => {
+        wrapper.classList.remove("scale-100","opacity-100");
+        wrapper.classList.add("scale-95","opacity-0");
+        setTimeout(()=>modal.classList.add("hidden"),300);
+      };
+      modal.classList.remove("hidden"); modal.classList.add("flex");
+      setTimeout(()=>{ wrapper.classList.remove("scale-95","opacity-0"); wrapper.classList.add("scale-100","opacity-100"); },50);
     }
     function n(v){ return Number(v)||0; }
     function clamp01(x){ return Math.max(0, Math.min(1, x)); }
@@ -241,149 +228,299 @@
       return list.map(m => `<option value="${escapeHtml(m)}" ${m===selected?'selected':''}>${escapeHtml(m)}</option>`).join("");
     }
     function tsToDateStr(v){
-      try{ if(!v) return ""; if(typeof v==="string") return v.slice(0,10); if(v?.toDate) return v.toDate().toISOString().slice(0,10); if(v instanceof Date) return v.toISOString().slice(0,10); return ""; }catch{ return ""; }
+      try{
+        if(!v) return "";
+        if (typeof v === "string") return v.slice(0,10);
+        if (v?.toDate) return v.toDate().toISOString().slice(0,10);
+        if (v instanceof Date) return v.toISOString().slice(0,10);
+        return "";
+      }catch{ return ""; }
     }
     function overlapsRange(start, end, s, e){
-      if(!start && !end) return false; const aStart=start||end; const aEnd=end||start; const bStart=s||e; const bEnd=e||s;
-      if(!bStart && !bEnd) return true; if(!aStart||!aEnd||!bStart||!bEnd) return false; return (aStart<=bEnd)&&(bStart<=aEnd);
+      if(!start && !end) return false;
+      const aStart = start || end; const aEnd = end || start;
+      const bStart = s || e; const bEnd = e || s;
+      if(!bStart && !bEnd) return true;
+      if(!aStart || !aEnd || !bStart || !bEnd) return false;
+      return (aStart <= bEnd) && (bStart <= aEnd);
     }
     function inRange(d, s, e){ if(!d) return false; if(s && d < s) return false; if(e && d > e) return false; return true; }
     function arrayToCsv(headers, rows){
-      const esc = (val)=>{ const s = (val===undefined || val===null) ? "" : String(val); const needQuote = /[",\r\n]/.test(s); const q = s.replace(/"/g, '""'); return needQuote ? `"${q}"` : q; };
-      const head = headers.map(esc).join(","); const body = rows.map(r => headers.map(h => esc(r[h])).join(",")).join("\r\n"); return head + "\r\n" + body;
+      const esc = (val)=>{ const s = (val===undefined || val===null) ? "" : String(val);
+        const needQuote = /[",\r\n]/.test(s); const q = s.replace(/"/g, '""'); return needQuote ? `"${q}"` : q; };
+      const head = headers.map(esc).join(",");
+      const body = rows.map(r => headers.map(h => esc(r[h])).join(",")).join("\r\n");
+      return head + "\r\n" + body;
     }
     function triggerDownloadCsv(csvText, filename){
       const blob = new Blob(["\ufeff" + csvText], { type: "text/csv;charset=utf-8;" });
-      const url = URL.createObjectURL(blob); const a = document.createElement("a"); a.href = url; a.download = filename; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url; a.download = filename; document.body.appendChild(a); a.click(); a.remove();
+      URL.revokeObjectURL(url);
     }
-    function isAuthorized(){ return !!(isAuthReady && currentUserId); }
 
-    // Email 登入 Modal 控制
-    window.openAuthModal = function(){
-      const allow = (window.__ALLOW_SIGNUP !== false);
-      document.getElementById('auth-modal').classList.remove('hidden');
-      document.getElementById('btn-auth-signup').classList.toggle('hidden', !allow);
-      document.getElementById('auth-msg').textContent='';
-      document.getElementById('auth-email').focus();
-    };
-    window.closeAuthModal = function(){ document.getElementById('auth-modal').classList.add('hidden'); };
-
-    function setAuthMsg(text, ok){
-      const el=document.getElementById('auth-msg'); el.textContent=text||''; el.className='text-sm ' + (ok?'text-green-600':'text-red-600');
+    // GitHub Pages 判斷（略過 /notify）
+    const IS_PAGES = location.hostname.endsWith(".github.io");
+    async function sendTeamsNotification(title,text,color="0078D4"){
+      if(IS_PAGES) return;
+      try{
+        const resp = await fetch("/notify",{
+          method:"POST",
+          headers:{"Content-Type":"application/json"},
+          body:JSON.stringify({title,text,themeColor:color})
+        });
+        if(!resp.ok){ console.warn("notify failed", resp.status, await resp.text()); }
+      }catch(e){ console.warn("notify error", e); }
     }
-    window.handleEmailSignIn = async function(){
-      try{
-        const email=(document.getElementById('auth-email').value||'').trim();
-        const pass=document.getElementById('auth-pass').value||'';
-        if(!email || !pass){ setAuthMsg('請輸入 Email 與密碼', false); return; }
-        setAuthMsg('登入中...', true);
-        await signInWithEmailAndPassword(auth, email, pass);
-        setAuthMsg('登入成功！', true);
-        closeAuthModal();
-      }catch(e){ setAuthMsg(e?.message||'登入失敗', false); }
-    };
-    window.handleEmailSignUp = async function(){
-      if(!ALLOW_SIGNUP){ return; }
-      try{
-        const email=(document.getElementById('auth-email').value||'').trim();
-        const pass=document.getElementById('auth-pass').value||'';
-        if(!email || pass.length<6){ setAuthMsg('請輸入 Email 與至少 6 碼密碼', false); return; }
-        setAuthMsg('註冊中...', true);
-        await createUserWithEmailAndPassword(auth, email, pass);
-        setAuthMsg('註冊成功，已登入！', true);
-        closeAuthModal();
-      }catch(e){ setAuthMsg(e?.message||'註冊失敗', false); }
-    };
-    window.handlePasswordReset = async function(){
-      try{
-        const email=(document.getElementById('auth-email').value||'').trim();
-        if(!email){ setAuthMsg('請輸入 Email 再重設密碼', false); return; }
-        await sendPasswordResetEmail(auth, email);
-        setAuthMsg('已寄出重設密碼信，請查收。', true);
-      }catch(e){ setAuthMsg(e?.message||'寄送失敗', false); }
-    };
 
-    // Firebase 初始化 + Auth
+    // SharePoint 備份（非阻斷）
+    async function backupProjectToSharePoint(p){
+      if(!SHAREPOINT_FLOW_URL || /REPLACE/.test(SHAREPOINT_FLOW_URL)) return;
+      const body = {
+        id: p.id, title: p.title, manager: p.manager,
+        personnelBudget: n(p.personnelBudget), operatingBudget: n(p.operatingBudget), equipmentBudget: n(p.equipmentBudget),
+        budget: n(p.budget), progress: n(p.progress), status: String(p.status||""),
+        reporterId: currentUserId,
+        createdAt: new Date().toISOString()
+      };
+      try{
+        await fetch(SHAREPOINT_FLOW_URL, {
+          method: "POST",
+          headers: { "Content-Type": "text/plain;charset=utf-8" },
+          mode: "no-cors",
+          body: JSON.stringify(body)
+        });
+      }catch(e){
+        console.warn("SharePoint backup failed:", e);
+      }
+    }
+
+    // AI 週/月報
+    async function generateAIReport(mode){
+      const url = AI_SUMMARY_WEBAPP_URL;
+      if(!url || /REPLACE/.test(url)) { showModal("未設定 AI 端點", "請先部署 AI Web App URL 後再使用。"); return; }
+      const box = document.getElementById("ai-summary-box");
+      const dl  = document.getElementById("btn-ai-download");
+      box.textContent = "AI 生成中，請稍候..."; dl.disabled = true;
+
+      const today = new Date(); let start, end;
+      if(mode==="week"){
+        const d = new Date(today); const dow = d.getDay()||7; d.setDate(d.getDate()-(dow-1));
+        start = d.toISOString().slice(0,10); const e = new Date(d); e.setDate(e.getDate()+6); end = e.toISOString().slice(0,10);
+      }else{
+        const d = new Date(today.getFullYear(), today.getMonth(), 1); start = d.toISOString().slice(0,10);
+        const e = new Date(today.getFullYear(), today.getMonth()+1, 0); end = e.toISOString().slice(0,10);
+      }
+
+      const ps = projects.map(p=>({ id:p.id, title:p.title||"", manager:p.manager||"", budget:n(p.budget), progress:n(p.progress), status:p.status||"" }));
+      const ts = tasks.filter(t=> inRange(t.dueDate||"", start, end)).map(t=>({ id:t.id, projectId:t.projectId||"", taskName:t.taskName||"", assignee:t.assignee||"", dueDate:t.dueDate||"", status:t.status||"" }));
+      const es = events.filter(ev=> overlapsRange(ev.startDate||"", ev.endDate||ev.startDate||"", start, end)).map(ev=>({ id:ev.id, projectId:ev.projectId||"", title:ev.title||"", assignee:ev.assignee||"", startDate:ev.startDate||"", endDate:ev.endDate||ev.startDate||"", description:ev.description||"" }));
+
+      const payload = { action:"ai_summary", mode, start, end, projects:ps, tasks:ts, events:es };
+
+      try{
+        const resp = await fetch(url, { method:"POST", headers:{ "Content-Type":"text/plain;charset=utf-8" }, body: JSON.stringify(payload) });
+        const data = await resp.json().catch(()=> ({}));
+        const md = data?.summary || data?.text || "(無法產生報導)";
+        box.textContent = md;
+        dl.disabled = false;
+        dl.onclick = ()=>{
+          const blob = new Blob([md], { type: "text/markdown;charset=utf-8" });
+          const u = URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          a.href = u; a.download = `project_report_${mode}_${start}_${end}.md`;
+          a.click(); URL.revokeObjectURL(u);
+        };
+      }catch(e){
+        console.error(e);
+        box.textContent = "AI 產生失敗：" + (e?.message||String(e));
+      }
+    }
+
+    // 初始化 Firebase + Auth
     async function initFirebase(){
       if(!firebaseConfig) { console.error("缺少 Firebase 設定"); return; }
       const app = initializeApp(firebaseConfig);
-      if(APP_CHECK_SITE_KEY){ initializeAppCheck(app, { provider: new ReCaptchaV3Provider(APP_CHECK_SITE_KEY), isTokenAutoRefreshEnabled: true }); }
+      if(APP_CHECK_SITE_KEY){
+        initializeAppCheck(app, { provider: new ReCaptchaV3Provider(APP_CHECK_SITE_KEY), isTokenAutoRefreshEnabled: true });
+      }
       db = getFirestore(app);
       auth = getAuth(app);
       storage = getStorage(app);
+
+      await setPersistence(auth, browserLocalPersistence);
 
       onAuthStateChanged(auth, async (user)=>{
         isAuthReady = true;
         if(user){
           currentUserId = user.uid;
-          userProfile = { displayName: user.displayName || "", email: user.email || "", photoURL: user.photoURL || "" };
-          updateAuthUI(true);
-          if(!listenersStarted) initializeSystem(true);
+          userProfile = {
+            displayName: user.displayName || "",
+            email: user.email || "",
+            photoURL: user.photoURL || ""
+          };
+          updateUserUI();
+          showAppShell();
+          if(!listenersStarted) startRealtimeListeners();
+          await handleRedirectResultOnce();
         }else{
           currentUserId = "";
           userProfile = { displayName:"", email:"", photoURL:"" };
-          updateAuthUI(false);
-          initializeSystem(false);
+          showLanding();
         }
       });
     }
 
-    function updateAuthUI(loggedIn){
-      const btnIn  = document.getElementById("btn-signin");
-      const btnOut = document.getElementById("btn-signout");
-      const userBox = document.getElementById("user-box");
-      const nameEl = document.getElementById("user-display-name");
-      const emailEl = document.getElementById("user-email");
-      const avatarEl = document.getElementById("user-avatar");
-      const initialEl = document.getElementById("user-initial");
+    function updateUserUI(){
+      const name = userProfile.displayName || userProfile.email || "使用者";
+      const email = userProfile.email || "";
+      const photoURL = userProfile.photoURL || "";
+      const initial = name.charAt(0).toUpperCase();
 
-      if(btnIn)  btnIn.classList.toggle("hidden", !!loggedIn);
-      if(btnOut) btnOut.classList.toggle("hidden", !loggedIn);
+      const landingUser = document.getElementById("landing-user");
+      const landingName = document.getElementById("landing-name");
+      const landingEmail = document.getElementById("landing-email");
+      const landingAvatar = document.getElementById("landing-avatar");
+      const landingInitial = document.getElementById("landing-initial");
+      const landingLogin = document.getElementById("btn-landing-login");
 
-      if(userBox){
-        userBox.classList.toggle("hidden", !loggedIn);
-        if(loggedIn){
-          const displayName = userProfile.displayName || userProfile.email?.split("@")[0] || "使用者";
-          const email = userProfile.email || "";
-          if(nameEl) nameEl.textContent = displayName;
-          if(emailEl) emailEl.textContent = email;
-          if(userProfile.photoURL){
-            avatarEl?.setAttribute("src", userProfile.photoURL);
-            avatarEl?.classList.remove("hidden");
-            initialEl?.classList.add("hidden");
-          }else{
-            if(avatarEl){ avatarEl.removeAttribute("src"); avatarEl.classList.add("hidden"); }
-            if(initialEl){
-              const init = (displayName || "U").trim()[0]?.toUpperCase() || "U";
-              initialEl.textContent = init;
-              initialEl.classList.remove("hidden");
-            }
-          }
+      if(currentUserId){
+        if(landingUser) landingUser.classList.remove("hidden");
+        if(landingLogin) landingLogin.classList.add("hidden");
+        if(landingName) landingName.textContent = name;
+        if(landingEmail) landingEmail.textContent = email;
+        if(photoURL){
+          if(landingAvatar){ landingAvatar.src = photoURL; landingAvatar.classList.remove("hidden"); }
+          if(landingInitial) landingInitial.classList.add("hidden");
+        }else{
+          if(landingAvatar) landingAvatar.classList.add("hidden");
+          if(landingInitial){ landingInitial.textContent = initial; landingInitial.classList.remove("hidden"); }
         }
       }
+
+      const userDisplayName = document.getElementById("user-display-name");
+      const userEmail = document.getElementById("user-email");
+      const userAvatar = document.getElementById("user-avatar");
+      const userInitial = document.getElementById("user-initial");
+
+      if(userDisplayName) userDisplayName.textContent = name;
+      if(userEmail) userEmail.textContent = email;
+      if(photoURL){
+        if(userAvatar){ userAvatar.src = photoURL; userAvatar.classList.remove("hidden"); }
+        if(userInitial) userInitial.classList.add("hidden");
+      }else{
+        if(userAvatar) userAvatar.classList.add("hidden");
+        if(userInitial){ userInitial.textContent = initial; userInitial.classList.remove("hidden"); }
+      }
+
       if(window.lucide?.createIcons) lucide.createIcons();
     }
 
+    function showLanding(){
+      const landing = document.getElementById("landing");
+      const appShell = document.getElementById("app-shell");
+      if(landing) landing.classList.remove("hidden");
+      if(appShell) appShell.classList.add("hidden");
+      if(window.lucide?.createIcons) lucide.createIcons();
+    }
+
+    function showAppShell(){
+      const landing = document.getElementById("landing");
+      const appShell = document.getElementById("app-shell");
+      if(landing) landing.classList.add("hidden");
+      if(appShell) appShell.classList.remove("hidden");
+      if(currentView!=="dashboard") currentView = "dashboard";
+      renderDashboard();
+      if(window.lucide?.createIcons) lucide.createIcons();
+    }
+
+    window.signInWithGoogle = async function(){
+      const loadingEl = document.getElementById("landing-loading");
+      const loginBtn = document.getElementById("btn-landing-login");
+      if(loadingEl) loadingEl.classList.remove("hidden");
+      if(loginBtn) loginBtn.disabled = true;
+
+      try{
+        const provider = new GoogleAuthProvider();
+        provider.setCustomParameters({ prompt: 'select_account' });
+        await signInWithPopup(auth, provider);
+      }catch(e){
+        const code = e?.code || "";
+        const shouldRedirect = [
+          "auth/popup-blocked",
+          "auth/cancelled-popup-request",
+          "auth/operation-not-supported-in-this-environment",
+          "auth/idpiframe-initialization-failed",
+          "auth/unauthorized-domain",
+          "auth/internal-error"
+        ].some(p => code.includes(p));
+        if(shouldRedirect){
+          try{
+            const provider = new GoogleAuthProvider();
+            provider.setCustomParameters({ prompt: 'select_account' });
+            await signInWithRedirect(auth, provider);
+          }catch(err2){
+            console.error(err2); showModal("登入失敗", err2?.message || String(err2));
+            if(loadingEl) loadingEl.classList.add("hidden");
+            if(loginBtn) loginBtn.disabled = false;
+          }
+        }else{
+          console.error(e); showModal("登入失敗", e?.message || String(e));
+          if(loadingEl) loadingEl.classList.add("hidden");
+          if(loginBtn) loginBtn.disabled = false;
+        }
+      }
+    };
+    async function handleRedirectResultOnce(){
+      try{ await getRedirectResult(auth); }catch(e){ console.warn("redirect login error:", e); }
+    }
     window.appSignOut = async function(){
-      try{ await signOut(auth); showModal("已登出","您已成功登出。"); }
-      catch(e){ console.error(e); showModal("登出失敗", e?.message || String(e)); }
+      try{
+        await signOut(auth);
+        showModal("已登出","您已成功登出。");
+      }catch(e){
+        console.error(e);
+        showModal("登出失敗", e?.message || String(e));
+      }
     };
 
-    // 系統初始化與監聽
-    function initializeSystem(withData){
-      if(currentView!=="dashboard") currentView = "dashboard";
-      renderDashboard(true);
-      if(withData) startRealtimeListeners();
-    }
     function startRealtimeListeners(){
-      if(!db || listenersStarted) return; listenersStarted = true;
-      onSnapshot(query(collection(db, PROJECTS_COLLECTION_PATH), orderBy("createdAt","desc")), (snap)=>{ projects = snap.docs.map(d=>({id:d.id, ...d.data()})); rerenderByView(); });
-      onSnapshot(query(collection(db, TASKS_COLLECTION_PATH), orderBy("createdAt","desc")), (snap)=>{ tasks = snap.docs.map(d=>({id:d.id, ...d.data()})); rerenderByView(); });
-      onSnapshot(query(collection(db, EVENTS_COLLECTION_PATH), orderBy("startDate","asc")), (snap)=>{ events = snap.docs.map(d=>({id:d.id, ...d.data()})); if(currentView==="calendar") renderCalendar(); });
-      onSnapshot(query(collection(db, FILES_COLLECTION_PATH), orderBy("uploadedAt","desc")), (snap)=>{ files = snap.docs.map(d=>({id:d.id, ...d.data()})); if(currentView==="details") renderProjectDetails(selectedProjectId); });
-      onSnapshot(doc(db, SETTINGS_DOC_PATH), (snap)=>{ if(snap.exists()){ const d=snap.data()||{}; budgetCaps = { personnelCap:n(d.personnelCap), operatingCap:n(d.operatingCap), equipmentCap:n(d.equipmentCap) }; } else { budgetCaps = { personnelCap:0, operatingCap:0, equipmentCap:0 }; } if(currentView==="dashboard") renderDashboard(); });
-      onSnapshot(query(collection(db, MANAGERS_COLLECTION_PATH), orderBy("name","asc")), (snap)=>{ managers = snap.docs.map(d=>({ id:d.id, ...d.data() })); rerenderByView(); });
-      onSnapshot(query(collection(db, COMMUNITY_COLLECTION_PATH), orderBy("createdAt","desc")), (snap)=>{ communityPosts = snap.docs.map(d=>({ id:d.id, ...d.data() })); if(currentView==="community") renderCommunity(); });
+      if(!db || listenersStarted) return;
+      listenersStarted = true;
+
+      onSnapshot(query(collection(db, PROJECTS_COLLECTION_PATH), orderBy("createdAt","desc")), (snap)=>{
+        projects = snap.docs.map(d=>({id:d.id, ...d.data()}));
+        rerenderByView();
+      });
+      onSnapshot(query(collection(db, TASKS_COLLECTION_PATH), orderBy("createdAt","desc")), (snap)=>{
+        tasks = snap.docs.map(d=>({id:d.id, ...d.data()}));
+        rerenderByView();
+      });
+      onSnapshot(query(collection(db, EVENTS_COLLECTION_PATH), orderBy("startDate","asc")), (snap)=>{
+        events = snap.docs.map(d=>({id:d.id, ...d.data()}));
+        if(currentView==="calendar") renderCalendar();
+      });
+      onSnapshot(query(collection(db, FILES_COLLECTION_PATH), orderBy("uploadedAt","desc")), (snap)=>{
+        files = snap.docs.map(d=>({id:d.id, ...d.data()}));
+        if(currentView==="details") renderProjectDetails(selectedProjectId);
+      });
+      onSnapshot(doc(db, SETTINGS_DOC_PATH), (snap)=>{
+        if(snap.exists()){
+          const d = snap.data()||{}; budgetCaps = { personnelCap:n(d.personnelCap), operatingCap:n(d.operatingCap), equipmentCap:n(d.equipmentCap) };
+        }else{
+          budgetCaps = { personnelCap:0, operatingCap:0, equipmentCap:0 };
+        }
+        if(currentView==="dashboard") renderDashboard();
+      });
+      onSnapshot(query(collection(db, MANAGERS_COLLECTION_PATH), orderBy("name","asc")), (snap)=>{
+        managers = snap.docs.map(d=>({ id:d.id, ...d.data() }));
+        rerenderByView();
+      });
+      onSnapshot(query(collection(db, COMMUNITY_COLLECTION_PATH), orderBy("createdAt","desc")), (snap)=>{
+        communityPosts = snap.docs.map(d=>({ id:d.id, ...d.data() }));
+        if(currentView==="community") renderCommunity();
+      });
     }
 
     // 視圖切換
@@ -392,7 +529,10 @@
       setActiveByView(view);
       if(view==="dashboard"){ renderDashboard(); }
       else if(view==="creation"){ renderProjectCreation(); }
-      else if(view==="details"){ selectedProjectId = (typeof arg === "string" && arg) ? arg : (projects[0]?.id || null); renderProjectDetails(selectedProjectId); }
+      else if(view==="details"){
+        selectedProjectId = (typeof arg === "string" && arg) ? arg : (projects[0]?.id || null);
+        renderProjectDetails(selectedProjectId);
+      }
       else if(view==="tasks"){ renderTaskManagement(); }
       else if(view==="calendar"){ renderCalendar(); }
       else if(view==="report"){ renderReport(); }
@@ -407,15 +547,11 @@
       if(currentView==="report") renderReport();
       if(currentView==="community") renderCommunity();
     }
-    function setActiveByView(view){
-      document.querySelectorAll('#app-sidebar .nav-item').forEach(el=>{ el.classList.toggle('active', el.getAttribute('data-view') === view); });
-      if(window.lucide?.createIcons) lucide.createIcons();
-    }
 
-    // 儀表板（保留你的版型，列出每個專案）
-    function renderDashboard(isBoot=false){
-      const c = document.getElementById("main-content"); if(!c) return;
-      const notLogged = !currentUserId;
+    // 儀表板
+    function renderDashboard(){
+      const c = document.getElementById("main-content");
+      if(!c) return;
 
       const totalProjects = projects.length;
       const completed = projects.filter(p => (n(p.progress)) >= 95).length;
@@ -439,18 +575,7 @@
       c.innerHTML = `
         <h2 class="text-3xl font-bold text-gray-800 mb-6 border-b pb-2 flex items-center">
           <i data-lucide="layout-dashboard" class="w-7 h-7 mr-3 text-primary-blue"></i> 專案儀表板
-          ${notLogged ? '<span class="ml-3 text-xs px-2 py-1 rounded bg-yellow-100 text-yellow-800">請先登入以讀取資料</span>' : ''}
         </h2>
-
-        ${ isBoot && !listenersStarted ? `
-          <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8 animate-pulse">
-            ${[1,2,3].map(()=>`
-              <div class="bg-white p-6 rounded-xl shadow-lg">
-                <div class="h-6 bg-gray-200 rounded w-1/3 mb-4"></div>
-                <div class="h-8 bg-gray-200 rounded w-1/2"></div>
-              </div>`).join('')}
-          </div>
-        ` : ''}
 
         <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
           <div class="project-card bg-white p-6 rounded-xl shadow-lg border-t-4 border-primary-blue">
@@ -500,7 +625,7 @@
             empty ? `
             <div class="text-center py-10">
               <i data-lucide="alert-triangle" class="w-10 h-10 text-yellow-500 mx-auto mb-4"></i>
-              <p class="text-lg text-gray-600">${notLogged ? '請先登入以載入專案資料。' : '目前沒有專案資料。'}</p>
+              <p class="text-lg text-gray-600">目前沒有專案資料。</p>
               <button onclick="setView('creation')" class="mt-4 px-4 py-2 bg-primary-blue text-white rounded-lg hover:bg-blue-700 transition">
                 <i data-lucide="plus" class="w-5 h-5 inline mr-1"></i> 新增第一個專案
               </button>
@@ -524,7 +649,7 @@
                     return `
                     <tr>
                       <td class="px-4 py-4 whitespace-nowrap text-sm font-medium text-primary-blue hover:underline cursor-pointer" onclick="setView('details','${escapeHtml(p.id)}')">
-                        <div class="text-xs text-gray-500">${escapeHtml(p.projectCode||p.id)}</div>${escapeHtml(p.title||'(未命名專案)')}
+                        <div class="text-xs text-gray-500">${escapeHtml(p.id)}</div>${escapeHtml(p.title)}
                       </td>
                       <td class="px-4 py-4 whitespace-nowrap text-sm text-gray-800">${escapeHtml(p.manager||"")}</td>
                       <td class="px-4 py-4 whitespace-nowrap text-sm">
@@ -574,27 +699,104 @@
       document.getElementById("integration-form")?.addEventListener("submit", async (e)=>{
         e.preventDefault();
         const projectId = document.getElementById("update-project-id").value;
+        const projectTitle = projects.find(p=>p.id===projectId)?.title || projectId;
         const manager = document.getElementById("update-manager").value;
         const message = document.getElementById("update-message").value;
         const feedback = document.getElementById("update-feedback");
 
-        if(!message || !projectId){ feedback.className="mt-4 text-sm text-red-600"; feedback.textContent="請填寫完整的更新訊息。"; return; }
-        if(!isAuthorized()){ feedback.className="mt-4 text-sm text-red-600"; feedback.textContent="請先登入再提交。"; return; }
+        if(!message || !projectId){
+          feedback.className="mt-4 text-sm text-red-600"; feedback.textContent="請填寫完整的更新訊息。"; return;
+        }
+        if(!isAuthorized()){
+          feedback.className="mt-4 text-sm text-red-600"; feedback.textContent="請先登入再提交。"; return;
+        }
         try{
-          await addDoc(collection(db, TASKS_COLLECTION_PATH), {
+          const ref = await addDoc(collection(db, TASKS_COLLECTION_PATH), {
             projectId, taskName:`即時更新: ${message.substring(0,30)}...`, description: message,
             assignee: manager, dueDate: new Date().toISOString().slice(0,10), status:"更新",
             createdAt: serverTimestamp(), reporterId: currentUserId
           });
-          feedback.className="mt-4 text-sm text-secondary-green"; feedback.textContent=`成功提交更新。`;
+          sendTeamsNotification(`[專案更新] ${projectTitle}`, `**回報人:** ${manager}\n\n**專案:** ${projectTitle} (${projectId})\n\n**訊息:** ${message}`, "ea580c");
+          feedback.className="mt-4 text-sm text-secondary-green"; feedback.textContent=`成功提交更新 (ID: ${ref.id})。`;
           document.getElementById("integration-form").reset();
         }catch(err){
-          console.error(err); feedback.className="mt-4 text-sm text-red-600"; feedback.textContent="提交更新失敗：資料庫錯誤。";
+          console.error(err);
+          feedback.className="mt-4 text-sm text-red-600"; feedback.textContent="提交更新失敗：資料庫錯誤。";
         }
       });
     }
 
-    // 新增/編輯專案：表單頁（包含：計畫編號/名稱/管理者/主持人/人事/設備/業務費）
+    // 新增/編輯專案（同前，略：已在上方呼叫）
+
+    function isValidProjectId(id){ return /^[A-Za-z0-9_-]{3,64}$/.test(id||""); }
+
+    async function handleNewProjectSubmission(e){
+      e.preventDefault();
+      const feedback = document.getElementById("project-form-feedback");
+      if(!isAuthorized()){ showModal("請先登入","請先登入後再新增專案。"); return; }
+
+      const projectId = document.getElementById("proj-id").value.trim();
+      const title = document.getElementById("proj-title").value.trim();
+      const selectedManager = document.getElementById("proj-manager").value;
+      const typedManager = (document.getElementById("proj-manager-new")?.value || "").trim();
+      const manager = typedManager || selectedManager;
+
+      const personnelBudget = n(document.getElementById("proj-personnel").value);
+      const operatingBudget = n(document.getElementById("proj-operating").value);
+      const equipmentBudget = n(document.getElementById("proj-equipment").value);
+      const budget = n(document.getElementById("proj-budget").value);
+      const progress = Math.max(0, Math.min(100, n(document.getElementById("proj-progress").value)));
+      const status = document.getElementById("proj-status").value.trim();
+
+      if(!isValidProjectId(projectId)){
+        feedback.className="mt-4 text-sm text-red-600"; feedback.textContent="格式錯誤：專案編號僅能包含英數字、底線、連字號，長度 3–64。"; return;
+      }
+      if(projects.some(p=>p.id===projectId)){
+        feedback.className="mt-4 text-sm text-red-600"; feedback.textContent=`錯誤：專案編號 ${projectId} 已存在！`; return;
+      }
+
+      try{
+        if(typedManager){
+          const exists = managers.some(m => (m.name||"") === typedManager);
+          if(!exists){
+            await addDoc(collection(db, MANAGERS_COLLECTION_PATH), {
+              name: typedManager, email:"", title:"",
+              createdAt: serverTimestamp(), reporterId: currentUserId
+            });
+          }
+        }
+
+        await setDoc(doc(db, PROJECTS_COLLECTION_PATH, projectId), {
+          id: projectId, title, manager,
+          budget, personnelBudget, operatingBudget, equipmentBudget,
+          progress, status, proposer: manager, manpower: 0, type:"手動輸入",
+          createdAt: serverTimestamp(), reporterId: currentUserId
+        });
+
+        backupProjectToSharePoint({
+          id: projectId, title, manager,
+          budget, personnelBudget, operatingBudget, equipmentBudget,
+          progress, status
+        });
+
+        sendTeamsNotification(
+          `[新專案建立] ${title}`,
+          `**專案編號:** ${projectId}\n\n**專案管理人:** ${manager}\n\n**預算：**${fmtMoney(budget)}（人事${fmtMoney(personnelBudget)} / 業務${fmtMoney(operatingBudget)} / 設備${fmtMoney(equipmentBudget)}）`,
+          "059669"
+        );
+
+        feedback.className="mt-4 text-sm text-secondary-green";
+        feedback.textContent="專案新增成功！已同步備份。";
+        document.getElementById("new-project-form").reset();
+        document.getElementById("proj-budget").value = 0;
+      }catch(err){
+        console.error(err);
+        feedback.className="mt-4 text-sm text-red-600";
+        feedback.textContent=`專案新增失敗：${err.message}`;
+      }
+    }
+
+    // 專案詳情（精簡版，含附件）
     function renderProjectCreation(){
       const c = document.getElementById("main-content");
       c.innerHTML = `
@@ -607,23 +809,19 @@
           <form id="new-project-form" class="space-y-4">
             <div>
               <label class="block text-sm font-medium text-gray-700">專案編號（唯一）</label>
-              <input type="text" id="proj-id" required class="mt-1 block w-full rounded-md border-gray-300 p-2 border" placeholder="例如 TP-2025-001"/>
+              <input type="text" id="proj-id" required class="mt-1 block w-full rounded-md border-gray-300 p-2 border" placeholder="例如 P-2025-001"/>
             </div>
             <div>
               <label class="block text-sm font-medium text-gray-700">專案名稱</label>
               <input type="text" id="proj-title" required class="mt-1 block w-full rounded-md border-gray-300 p-2 border"/>
             </div>
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label class="block text-sm font-medium text-gray-700">專案管理者</label>
-                <select id="proj-manager" required class="mt-1 block w-full rounded-md border-gray-300 p-2 border">
-                  ${ managerOptionsHtml() }
-                </select>
-              </div>
-              <div>
-                <label class="block text-sm font-medium text-gray-700">計畫主持人</label>
-                <input type="text" id="proj-pi" class="mt-1 block w-full rounded-md border-gray-300 p-2 border" placeholder="主持人姓名"/>
-              </div>
+            <div>
+              <label class="block text-sm font-medium text-gray-700">專案管理人</label>
+              <select id="proj-manager" required class="mt-1 block w-full rounded-md border-gray-300 p-2 border">
+                ${ managerOptionsHtml() }
+              </select>
+              <label class="block text-xs font-medium text-gray-500 mt-2">新增主持人（選填，若填寫則優先採用此值並加入人員名單）</label>
+              <input type="text" id="proj-manager-new" placeholder="輸入主持人姓名" class="mt-1 block w-full rounded-md border-gray-300 p-2 border"/>
             </div>
 
             <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -632,19 +830,19 @@
                 <input type="number" id="proj-personnel" min="0" value="0" class="mt-1 block w-full rounded-md border-gray-300 p-2 border"/>
               </div>
               <div>
-                <label class="block text-sm font-medium text-gray-700">設備費 (NTD)</label>
-                <input type="number" id="proj-equipment" min="0" value="0" class="mt-1 block w-full rounded-md border-gray-300 p-2 border"/>
-              </div>
-              <div>
                 <label class="block text-sm font-medium text-gray-700">業務費 (NTD)</label>
                 <input type="number" id="proj-operating" min="0" value="0" class="mt-1 block w-full rounded-md border-gray-300 p-2 border"/>
+              </div>
+              <div>
+                <label class="block text-sm font-medium text-gray-700">設備費 (NTD)</label>
+                <input type="number" id="proj-equipment" min="0" value="0" class="mt-1 block w-full rounded-md border-gray-300 p-2 border"/>
               </div>
             </div>
 
             <div>
               <label class="block text-sm font-medium text-gray-700">預算概算 (自動合計)</label>
               <input type="number" id="proj-budget" min="0" value="0" class="mt-1 block w-full rounded-md border-gray-300 p-2 border bg-gray-100" readonly/>
-              <p class="text-xs text-gray-500 mt-1">預算概算 = 人事費 + 設備費 + 業務費</p>
+              <p class="text-xs text-gray-500 mt-1">預算概算 = 人事費 + 業務費 + 設備費</p>
             </div>
 
             <div class="grid grid-cols-2 gap-4">
@@ -665,6 +863,7 @@
       `;
       if(window.lucide?.createIcons) lucide.createIcons();
 
+      // 預算合計
       const inputs = ["proj-personnel","proj-operating","proj-equipment"].map(id=>document.getElementById(id));
       const totalEl = document.getElementById("proj-budget");
       const recalc = ()=>{ totalEl.value = inputs.map(el=>Number(el.value)||0).reduce((a,b)=>a+b,0); };
@@ -673,194 +872,22 @@
       document.getElementById("new-project-form")?.addEventListener("submit", handleNewProjectSubmission);
     }
 
-    function isValidProjectId(id){ return /^[A-Za-z0-9_-]{3,64}$/.test(id||""); }
-    async function handleNewProjectSubmission(e){
-      e.preventDefault();
-      const feedback = document.getElementById("project-form-feedback");
-      if(!isAuthorized()){ showModal("請先登入","請先登入後再新增專案。"); return; }
-
-      const projectId = document.getElementById("proj-id").value.trim();
-      const title = document.getElementById("proj-title").value.trim();
-      const manager = document.getElementById("proj-manager").value;
-      const pi      = (document.getElementById("proj-pi").value||"").trim();
-
-      const personnelBudget = n(document.getElementById("proj-personnel").value);
-      const equipmentBudget = n(document.getElementById("proj-equipment").value);
-      const operatingBudget = n(document.getElementById("proj-operating").value);
-      const budget = n(document.getElementById("proj-budget").value);
-      const progress = Math.max(0, Math.min(100, n(document.getElementById("proj-progress").value)));
-      const status = document.getElementById("proj-status").value.trim();
-
-      if(!isValidProjectId(projectId)){
-        feedback.className="mt-4 text-sm text-red-600"; feedback.textContent="格式錯誤：專案編號僅能包含英數字、底線、連字號，長度 3–64。"; return;
-      }
-      if(projects.some(p=>p.id===projectId)){
-        feedback.className="mt-4 text-sm text-red-600"; feedback.textContent=`錯誤：專案編號 ${projectId} 已存在！`; return;
-      }
-
-      try{
-        await setDoc(doc(db, PROJECTS_COLLECTION_PATH, projectId), {
-          id: projectId, projectCode: projectId, title, manager, pi,
-          budget, personnelBudget, equipmentBudget, operatingBudget,
-          progress, status, createdAt: serverTimestamp(), reporterId: currentUserId
-        });
-        feedback.className="mt-4 text-sm text-secondary-green"; feedback.textContent="專案新增成功！";
-        document.getElementById("new-project-form").reset(); document.getElementById("proj-budget").value = 0;
-      }catch(err){
-        console.error(err); feedback.className="mt-4 text-sm text-red-600"; feedback.textContent=`專案新增失敗：${err.message}`;
-      }
-    }
-
-    // 專案詳情（含附件）
-    function renderProjectDetails(projectId){
-      const container = document.getElementById("main-content");
-
-      if(!projects || projects.length===0){
-        container.innerHTML = `
-          <h2 class="text-3xl font-bold text-gray-800 mb-6 border-b pb-2 flex items-center">
-            <i data-lucide="clipboard-list" class="w-7 h-7 mr-3 text-primary-blue"></i> 專案詳情
-          </h2>
-          <div class="bg-white p-6 rounded-xl shadow-lg text-center">
-            <i data-lucide="alert-triangle" class="w-10 h-10 text-yellow-500 mx-auto mb-4"></i>
-            <p class="text-gray-700 mb-4">目前沒有任何專案資料。</p>
-            <button onclick="setView('creation')" class="px-4 py-2 bg-primary-blue text-white rounded-lg hover:bg-blue-700">新增第一個專案</button>
-          </div>`;
-        if(window.lucide?.createIcons) lucide.createIcons();
-        return;
-      }
-
-      if(!projectId){
-        container.innerHTML = `
-          <h2 class="text-3xl font-bold text-gray-800 mb-6 border-b pb-2 flex items-center">
-            <i data-lucide="clipboard-list" class="w-7 h-7 mr-3 text-primary-blue"></i> 專案詳情
-          </h2>
-          <div class="bg-white p-6 rounded-xl shadow-lg">
-            <p class="text-gray-700 mb-4">請選擇要查看的專案：</p>
-            <div class="flex items-center gap-3">
-              <select id="details-project-select" class="rounded-md border-gray-300 p-2 border flex-1">
-                ${projects.map(p=>`<option value="${escapeHtml(p.id)}">${escapeHtml(p.id)} - ${escapeHtml(p.title)}</option>`).join("")}
-              </select>
-              <button id="details-go-btn" class="px-4 py-2 bg-primary-blue text-white rounded-lg hover:bg-blue-700">查看詳情</button>
-            </div>
-          </div>`;
-        if(window.lucide?.createIcons) lucide.createIcons();
-        document.getElementById('details-go-btn')?.addEventListener('click',()=>{
-          const sel = document.getElementById('details-project-select'); const val = sel?.value || null;
-          if(val) setView('details', val);
-        });
-        return;
-      }
-
-      const project = projects.find(p=>p.id===projectId);
-      if(!project){
-        container.innerHTML = `
-          <h2 class="text-3xl font-bold text-gray-800 mb-6 border-b pb-2 flex items-center">
-            <i data-lucide="clipboard-list" class="w-7 h-7 mr-3 text-primary-blue"></i> 專案詳情
-          </h2>
-          <div class="bg-white p-6 rounded-xl shadow-lg">
-            <p class="text-red-600 mb-4">找不到專案「${escapeHtml(String(projectId))}」。請重新選擇：</p>
-            <div class="flex items-center gap-3">
-              <select id="details-project-select" class="rounded-md border-gray-300 p-2 border flex-1">
-                ${projects.map(p=>`<option value="${escapeHtml(p.id)}">${escapeHtml(p.id)} - ${escapeHtml(p.title)}</option>`).join("")}
-              </select>
-              <button id="details-go-btn" class="px-4 py-2 bg-primary-blue text-white rounded-lg hover:bg-blue-700">查看詳情</button>
-            </div>
-          </div>`;
-        if(window.lucide?.createIcons) lucide.createIcons();
-        document.getElementById('details-go-btn')?.addEventListener('click',()=>{
-          const sel = document.getElementById('details-project-select'); const val = sel?.value || null;
-          if(val) setView('details', val);
-        });
-        return;
-      }
-
-      const progress = Number(project.progress)||0;
-      const barColor = progress>=95 ? "bg-secondary-green" : (progress<50?"bg-accent-orange":"bg-primary-blue");
-      const projectFiles = files.filter(f=>f.projectId===projectId);
-
-      container.innerHTML = `
-        <h2 class="text-3xl font-bold text-gray-800 mb-6 border-b pb-2 flex items-center">
-          <i data-lucide="clipboard-list" class="w-7 h-7 mr-3 text-primary-blue"></i>
-          專案詳情: ${escapeHtml(project.title)}
-        </h2>
-
-        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
-          <div class="lg:col-span-1 bg-white p-6 rounded-xl shadow-lg space-y-3">
-            <h3 class="text-xl font-semibold text-primary-blue mb-4 border-b pb-2">基本資訊</h3>
-            <p class="text-sm"><strong class="text-gray-600">計畫編號:</strong> ${escapeHtml(project.projectCode||project.id)}</p>
-            <p class="text-sm"><strong class="text-gray-600">專案管理人:</strong> <span class="text-lg font-bold text-secondary-green">${escapeHtml(project.manager||"")}</span></p>
-            <p class="text-sm"><strong class="text-gray-600">計畫主持人:</strong> ${escapeHtml(project.pi||"")}</p>
-            <p class="text-sm"><strong class="text-gray-600">預算概算:</strong> ${fmtMoney(project.budget)}</p>
-            <div class="text-sm text-gray-700 pl-1">
-              <p>・人事費：${fmtMoney(project.personnelBudget)}</p>
-              <p>・設備費：${fmtMoney(project.equipmentBudget)}</p>
-              <p>・業務費：${fmtMoney(project.operatingBudget)}</p>
-            </div>
-          </div>
-
-          <div class="lg:col-span-2 bg-white p-6 rounded-xl shadow-lg">
-            <h3 class="text-xl font-semibold text-primary-blue mb-4 border-b pb-2">流程進度與相關文件</h3>
-            <div class="flex items-center space-x-4 mb-4">
-              <span class="text-gray-600 font-medium">總進度:</span>
-              <div class="flex-grow bg-gray-200 rounded-full h-4">
-                <div class="progress-bar h-4 rounded-full ${barColor}" style="width:${progress}%"></div>
-              </div>
-              <span class="font-bold text-lg ${progress>=95?'text-secondary-green':'text-primary-blue'}">${progress}%</span>
-            </div>
-            <p class="text-sm text-gray-700">目前狀態: <span class="font-medium text-lg text-red-500">${escapeHtml(project.status||"")}</span></p>
-
-            <div class="mt-6">
-              <h4 class="text-md font-semibold text-gray-700">附件上傳</h4>
-              <div class="flex items-center gap-2">
-                <input type="file" id="file-input" multiple class="block w-full text-sm text-gray-700"/>
-                <button id="file-upload-btn" class="px-3 py-2 text-sm bg-primary-blue text-white rounded-lg hover:bg-blue-700">上傳</button>
-              </div>
-              <div id="file-upload-progress" class="text-xs text-gray-600 mt-2"></div>
-
-              <h4 class="text-md font-semibold text-gray-700 mt-4">附件列表</h4>
-              <ul id="file-list" class="list-disc list-inside text-sm text-primary-blue space-y-1 ml-4 mt-2">
-                ${
-                  projectFiles.length
-                  ? projectFiles.map(f=>`
-                      <li>
-                        <a href="${escapeHtml(f.url)}" target="_blank" class="hover:underline">${escapeHtml(f.name)}</a>
-                        <span class="text-gray-500">(${Math.round((Number(f.size)||0)/1024)} KB)</span>
-                        ${ (f.reporterId||"")===currentUserId
-                            ? `<button class="ml-2 text-red-600 text-xs hover:underline" onclick="deleteProjectFile('${escapeHtml(f.id)}')">刪除</button>`
-                            : "" }
-                      </li>
-                    `).join("")
-                  : '<li class="text-gray-500">尚無附件</li>'
-                }
-              </ul>
-            </div>
-          </div>
-        </div>
-      `;
-      if(window.lucide?.createIcons) lucide.createIcons();
-
-      document.getElementById("file-upload-btn")?.addEventListener("click", async ()=>{
-        const inp = document.getElementById("file-input");
-        const progressEl = document.getElementById("file-upload-progress");
-        const fl = inp?.files;
-        if(!fl || fl.length===0){ showModal("未選擇檔案","請先選擇檔案再上傳。"); return; }
-        if(!isAuthorized()){ showModal("請先登入","請先登入後再上傳。"); return; }
-        try{
-          progressEl.textContent = "上傳中...";
-          await uploadProjectFiles(projectId, fl, (pct, name)=>{ progressEl.textContent = `上傳 ${name}：${pct}%`; });
-          progressEl.textContent = "上傳完成。";
-          inp.value = "";
-        }catch(err){ console.error(err); progressEl.textContent = `上傳失敗：${err.message}`; }
-      });
-    }
-
+    // 檔案上傳/中繼資料
     async function uploadProjectFiles(projectId, fileList, onProgress){
       for(const file of fileList){
         const safeName = file.name.replace(/[^\w.\-() ]+/g, "_");
         const storagePath = `artifacts/${APP_ID}/uploads/project_files/${projectId}/${Date.now()}_${safeName}`;
         const refObj = sRef(storage, storagePath);
-        const task = uploadBytesResumable(refObj, file, { contentType: file.type || "application/octet-stream", customMetadata: { ownerUid: currentUserId } });
-        await new Promise((resolve, reject)=>{ task.on("state_changed", snap => { if(onProgress){ const pct = Math.round((snap.bytesTransferred / snap.totalBytes) * 100); onProgress(pct, file.name); } }, reject, resolve ); });
+        const task = uploadBytesResumable(refObj, file, {
+          contentType: file.type || "application/octet-stream",
+          customMetadata: { ownerUid: currentUserId }
+        });
+        await new Promise((resolve, reject)=>{
+          task.on("state_changed",
+            snap => { if(onProgress){ const pct = Math.round((snap.bytesTransferred / snap.totalBytes) * 100); onProgress(pct, file.name); } },
+            reject, resolve
+          );
+        });
         const url = await getDownloadURL(refObj);
         await addDoc(collection(db, FILES_COLLECTION_PATH), {
           projectId, name: file.name, size: file.size || 0, contentType: file.type || "",
@@ -876,13 +903,16 @@
         if(f.storagePath){ await deleteObject(sRef(storage, f.storagePath)); }
         await deleteDoc(doc(db, FILES_COLLECTION_PATH, fileId));
         showModal("刪除成功", f.name);
-      }catch(err){ console.error(err); showModal("錯誤", `刪除檔案失敗：${err.message}`); }
+      }catch(err){
+        console.error(err); showModal("錯誤", `刪除檔案失敗：${err.message}`);
+      }
     }
     window.deleteProjectFile = deleteProjectFile;
 
-    // 任務
+    // 任務管理
     function renderTaskManagement(){
       const c = document.getElementById("main-content");
+
       c.innerHTML = `
         <h2 class="text-3xl font-bold text-gray-800 mb-6 border-b pb-2 flex items-center">
           <i data-lucide="clipboard-check" class="w-7 h-7 mr-3 text-primary-blue"></i> 任務管理中心
@@ -951,24 +981,41 @@
       if(!isAuthorized()){ showModal("請先登入","請先登入後再分配任務。"); return; }
 
       const projectId = document.getElementById("task-project-id").value;
+      const projectTitle = projects.find(p=>p.id===projectId)?.title || projectId;
       const taskName = document.getElementById("task-name").value;
       const assignee = document.getElementById("task-assignee").value;
       const dueDate = document.getElementById("task-due-date").value;
 
-      if(!projectId){ feedback.className="mt-4 text-sm text-red-600"; feedback.textContent="請先選擇專案。"; return; }
+      if(!projectId){
+        feedback.className="mt-4 text-sm text-red-600";
+        feedback.textContent="請先選擇專案。"; return;
+      }
       try{
         const taskRef = await addDoc(collection(db, TASKS_COLLECTION_PATH), {
           projectId, taskName, assignee, dueDate, status:"待辦",
           createdAt: serverTimestamp(), reporterId: currentUserId
         });
+
         await addDoc(collection(db, EVENTS_COLLECTION_PATH), {
           projectId, title: taskName, assignee, startDate: dueDate, endDate: dueDate,
           description: `任務：${taskName}（自動建立於任務分配）`,
           createdFromTaskId: taskRef.id, createdAt: serverTimestamp(), reporterId: currentUserId
         });
-        feedback.className="mt-4 text-sm text-secondary-green"; feedback.textContent="任務分配成功！已同步建立行事曆事件。";
+
+        sendTeamsNotification(
+          `[新任務分配] ${taskName}`,
+          `**專案:** ${projectTitle} (${projectId})\n\n**負責人:** ${assignee}\n\n**截止日期:** ${dueDate}\n\n**狀態:** 待辦`,
+          "1e40af"
+        );
+
+        feedback.className="mt-4 text-sm text-secondary-green";
+        feedback.textContent="任務分配成功！已同步建立行事曆事件。";
         document.getElementById("new-task-form").reset();
-      }catch(err){ console.error(err); feedback.className="mt-4 text-sm text-red-600"; feedback.textContent="任務分配失敗：資料庫錯誤。"; }
+      }catch(err){
+        console.error(err);
+        feedback.className="mt-4 text-sm text-red-600";
+        feedback.textContent="任務分配失敗：資料庫錯誤。";
+      }
     }
 
     function renderTaskList(){
@@ -1009,7 +1056,15 @@
       if(!isAuthorized()){ showModal("請先登入","請先登入後再操作。"); return; }
       try{
         await updateDoc(doc(db, TASKS_COLLECTION_PATH, taskId), { status:newStatus, updatedAt: serverTimestamp() });
-      }catch(err){ console.error(err); showModal("錯誤", `更新任務狀態失敗：${err.message}`); }
+        const task = tasks.find(t=>t.id===taskId);
+        const projectTitle = projects.find(p=>p.id===task?.projectId)?.title || task?.projectId;
+        if(task){
+          let color="f97316"; if(newStatus==="完成") color="059669"; if(newStatus==="進行中") color="eab308";
+          sendTeamsNotification(`[任務狀態更新] ${task.taskName}`, `**專案:** ${projectTitle}\n\n**任務:** ${task.taskName}\n\n**負責人:** ${task.assignee}\n\n**新狀態:** **${newStatus}**`, color);
+        }
+      }catch(err){
+        console.error(err); showModal("錯誤", `更新任務狀態失敗：${err.message}`);
+      }
     }
     window.updateTaskStatus = updateTaskStatus;
 
@@ -1083,13 +1138,313 @@
           });
           feedback.className="mt-4 text-sm text-secondary-green"; feedback.textContent="行事已新增！";
           document.getElementById("new-event-form").reset(); renderCalendar();
-        }catch(err){ console.error(err); feedback.className="mt-4 text-sm text-red-600"; feedback.textContent="新增行事失敗：資料庫錯誤。"; }
+        }catch(err){
+          console.error(err); feedback.className="mt-4 text-sm text-red-600"; feedback.textContent="新增行事失敗：資料庫錯誤。";
+        }
       });
     }
 
-    // 報告、社群（原樣，略：已於上方函式中保留）
+    // 報告與下載
+    function renderReport(){
+      const c = document.getElementById("main-content");
 
-    // 側欄展開/收合
+      c.innerHTML = `
+        <h2 class="text-3xl font-bold text-gray-800 mb-6 border-b pb-2 flex items-center">
+          <i data-lucide="file-text" class="w-7 h-7 mr-3 text-primary-blue"></i> 報告與下載
+        </h2>
+
+        <div class="bg-white p-6 rounded-xl shadow-lg">
+          <h3 class="text-xl font-semibold text-gray-800 mb-4 border-b pb-2">匯出設定</h3>
+
+          <form id="report-form" class="space-y-4">
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div>
+                <label class="block text-sm font-medium text-gray-700">資料來源</label>
+                <select id="report-source" class="mt-1 block w-full rounded-md border-gray-300 p-2 border">
+                  <option value="projects">專案</option>
+                  <option value="tasks">任務</option>
+                  <option value="events">行事曆</option>
+                </select>
+              </div>
+              <div>
+                <label class="block text-sm font-medium text-gray-700">開始日期</label>
+                <input type="date" id="report-start" class="mt-1 block w-full rounded-md border-gray-300 p-2 border" />
+              </div>
+              <div>
+                <label class="block text-sm font-medium text-gray-700">結束日期</label>
+                <input type="date" id="report-end" class="mt-1 block w-full rounded-md border-gray-300 p-2 border" />
+              </div>
+            </div>
+
+            <div class="flex flex-wrap items-center gap-3">
+              <label class="inline-flex items-center text-sm text-gray-700">
+                <input type="checkbox" id="report-all" class="mr-2" checked />
+                全部（不篩選日期）
+              </label>
+
+              <button type="button" id="btn-preview" class="px-3 py-2 bg-gray-100 hover:bg-gray-200 rounded-lg text-gray-800 flex items-center">
+                <i data-lucide="eye" class="w-4 h-4 mr-1"></i> 預覽
+              </button>
+              <button type="button" id="btn-download" class="px-3 py-2 bg-primary-blue hover:bg-blue-700 rounded-lg text-white flex items-center">
+                <i data-lucide="download" class="w-4 h-4 mr-1"></i> 下載 CSV
+              </button>
+            </div>
+          </form>
+
+          <div id="report-preview" class="mt-6"></div>
+        </div>
+
+        <div class="mt-8 bg-white p-6 rounded-xl shadow-lg">
+          <h3 class="text-xl font-semibold text-gray-800 mb-2 border-b pb-2">AI 專案彙整報導</h3>
+          <div class="flex items-center gap-3 mb-3">
+            <button type="button" id="btn-ai-week" class="px-3 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg">生成本週報導</button>
+            <button type="button" id="btn-ai-month" class="px-3 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg">生成本月報導</button>
+            <button type="button" id="btn-ai-download" class="px-3 py-2 bg-gray-100 hover:bg-gray-200 text-gray-800 rounded-lg" disabled>下載 Markdown</button>
+          </div>
+          <pre id="ai-summary-box" class="whitespace-pre-wrap text-sm text-gray-800 bg-gray-50 p-3 rounded-lg overflow-x-auto"></pre>
+        </div>
+      `;
+
+      if(window.lucide?.createIcons) lucide.createIcons();
+
+      const allEl   = document.getElementById("report-all");
+      const startEl = document.getElementById("report-start");
+      const endEl   = document.getElementById("report-end");
+
+      const toggleDateInputs = ()=>{
+        const dis = allEl.checked;
+        [startEl, endEl].forEach(el=>{
+          el.disabled = dis; el.classList.toggle("bg-gray-100", dis);
+        });
+      };
+      allEl.addEventListener("change", toggleDateInputs); toggleDateInputs();
+
+      document.getElementById("btn-preview")?.addEventListener("click", ()=>{
+        const res = buildDataset(); renderPreview(res);
+      });
+
+      document.getElementById("btn-download")?.addEventListener("click", ()=>{
+        const res = buildDataset();
+        const { source, rows, start, end, all } = res;
+        if(rows.length===0){ showModal("沒有可匯出的資料", "請調整資料來源或日期區間再試。"); return; }
+        const { headers } = getHeadersForSource(source);
+        const csv = arrayToCsv(headers, rows);
+        const stamp = new Date().toISOString().replace(/[-:.TZ]/g,"").slice(0,14);
+        const range = all ? "all" : `${(start||"NA").replaceAll("-","")}_${(end||"NA").replaceAll("-","")}`;
+        const filename = `${source}_${range}_${stamp}.csv`;
+        triggerDownloadCsv(csv, filename);
+      });
+
+      document.getElementById("btn-ai-week")?.addEventListener("click", ()=> generateAIReport("week"));
+      document.getElementById("btn-ai-month")?.addEventListener("click", ()=> generateAIReport("month"));
+
+      function getHeadersForSource(source){
+        if(source==="projects"){
+          return { headers: ["id","title","manager","budget","personnelBudget","operatingBudget","equipmentBudget","progress","status","createdAt","reporterId"] };
+        }else if(source==="tasks"){
+          return { headers: ["id","projectId","taskName","assignee","dueDate","status","createdAt","updatedAt"] };
+        }else{
+          return { headers: ["id","projectId","title","assignee","startDate","endDate","description"] };
+        }
+      }
+
+      function buildDataset(){
+        const source = document.getElementById("report-source").value;
+        const all    = document.getElementById("report-all").checked;
+        const start  = startEl.value || ""; const end = endEl.value || "";
+        let rows = [];
+        if(source==="projects"){
+          rows = projects.map(p=>({
+            id: p.id, title: p.title||"", manager: p.manager||"",
+            budget: n(p.budget), personnelBudget: n(p.personnelBudget), operatingBudget: n(p.operatingBudget), equipmentBudget: n(p.equipmentBudget),
+            progress: n(p.progress), status: p.status||"", createdAt: tsToDateStr(p.createdAt), reporterId: p.reporterId||""
+          }));
+          if(!all) rows = rows.filter(r=> inRange(r.createdAt, start, end));
+        }else if(source==="tasks"){
+          rows = tasks.map(t=>({
+            id: t.id, projectId: t.projectId||"", taskName: t.taskName||"", assignee: t.assignee||"",
+            dueDate: t.dueDate||"", status: t.status||"", createdAt: tsToDateStr(t.createdAt), updatedAt: tsToDateStr(t.updatedAt)
+          }));
+          if(!all) rows = rows.filter(r=> inRange(r.dueDate, start, end));
+        }else{
+          rows = events.map(ev=>({
+            id: ev.id, projectId: ev.projectId||"", title: ev.title||"", assignee: ev.assignee||"",
+            startDate: ev.startDate||"", endDate: ev.endDate||"", description: ev.description||""
+          }));
+          if(!all) rows = rows.filter(r=> overlapsRange(r.startDate, r.endDate, start, end));
+        }
+        return { source, rows, start, end, all };
+      }
+
+      function renderPreview(result){
+        const box = document.getElementById("report-preview");
+        const { source, rows } = result;
+        if(rows.length===0){ box.innerHTML = `<div class="text-gray-500 text-sm py-4">沒有符合條件的資料。</div>`; return; }
+        const { headers } = getHeadersForSource(source); const sample = rows.slice(0, 20);
+        box.innerHTML = `
+          <div class="flex items-center justify-between">
+            <p class="text-sm text-gray-600">共 <span class="font-semibold">${rows.length}</span> 筆，以下僅預覽前 <span class="font-semibold">${sample.length}</span> 筆。</p>
+          </div>
+          <div class="overflow-x-auto mt-3">
+            <table class="min-w-full divide-y divide-gray-200">
+              <thead class="bg-gray-50">
+                <tr>${headers.map(h=>`<th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">${escapeHtml(h)}</th>`).join("")}</tr>
+              </thead>
+              <tbody class="bg-white divide-y divide-gray-200 text-sm">
+                ${ sample.map(r=>`<tr>${headers.map(h=>`<td class="px-3 py-2 whitespace-nowrap">${escapeHtml(String(r[h]??""))}</td>`).join("")}</tr>`).join("") }
+              </tbody>
+            </table>
+          </div>`;
+      }
+    }
+
+    // 資訊交流（社群貼文）
+    async function uploadCommunityImages(fileList, onProgress){
+      const uploaded = [];
+      for(const file of fileList){
+        if(!file.type?.startsWith("image/")) { continue; }
+        const safeName = file.name.replace(/[^\w.\-() ]+/g, "_");
+        const storagePath = `artifacts/${APP_ID}/uploads/community/${currentUserId}/${Date.now()}_${safeName}`;
+        const refObj = sRef(storage, storagePath);
+        const task = uploadBytesResumable(refObj, file, { contentType: file.type || "image/*", customMetadata: { ownerUid: currentUserId } });
+        await new Promise((resolve,reject)=>{
+          task.on("state_changed",
+            snap=>{ if(onProgress){ const pct = Math.round((snap.bytesTransferred/snap.totalBytes)*100); onProgress(pct,file.name); } },
+            reject, resolve
+          );
+        });
+        const url = await getDownloadURL(refObj);
+        uploaded.push({ url, storagePath, name: file.name, size: file.size||0, contentType: file.type||"" });
+      }
+      return uploaded;
+    }
+    async function createCommunityPost({ text, files }){
+      if(!currentUserId){ showModal("請先登入","請先使用 Google 登入再發佈貼文。"); return; }
+      const images = files && files.length ? await uploadCommunityImages(files) : [];
+      await addDoc(collection(db, COMMUNITY_COLLECTION_PATH), {
+        authorUid: currentUserId,
+        authorName: userProfile.displayName || userProfile.email || "使用者",
+        authorPhotoURL: userProfile.photoURL || "",
+        text: text || "",
+        images,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp()
+      });
+    }
+    async function deleteCommunityPost(postId){
+      const post = communityPosts.find(p=>p.id===postId);
+      if(!post){ return; }
+      if(post.authorUid !== currentUserId){
+        showModal("權限不足","只能刪除自己發佈的貼文。"); return;
+      }
+      if(!confirm("確定要刪除此貼文與其圖片？")) return;
+      try{
+        for(const img of (post.images||[])){
+          if(img.storagePath){ await deleteObject(sRef(storage, img.storagePath)); }
+        }
+      }catch(e){ console.warn("刪圖警告", e); }
+      await deleteDoc(doc(db, COMMUNITY_COLLECTION_PATH, postId));
+    }
+    window.deleteCommunityPost = deleteCommunityPost;
+
+    function timeAgo(ts){
+      const d = ts?.toDate ? ts.toDate() : (typeof ts==='string'? new Date(ts) : new Date());
+      const diff = (Date.now() - d.getTime())/1000;
+      if(diff<60) return `${Math.floor(diff)} 秒前`;
+      if(diff<3600) return `${Math.floor(diff/60)} 分鐘前`;
+      if(diff<86400) return `${Math.floor(diff/3600)} 小時前`;
+      return d.toLocaleString("zh-TW");
+    }
+    function renderCommunity(){
+      const c = document.getElementById("main-content");
+      const canPost = !!currentUserId;
+
+      c.innerHTML = `
+        <h2 class="text-3xl font-bold text-gray-800 mb-6 border-b pb-2 flex items-center">
+          <i data-lucide="messages-square" class="w-7 h-7 mr-3 text-primary-blue"></i> 資訊交流
+        </h2>
+
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div class="lg:col-span-1">
+            <div class="bg-white p-5 rounded-xl shadow-lg">
+              <h3 class="text-lg font-semibold text-gray-800 mb-3">發佈貼文</h3>
+              ${ canPost ? `
+                <form id="post-form" class="space-y-3">
+                  <textarea id="post-text" rows="4" class="w-full rounded-md border-gray-300 p-2 border" placeholder="分享你的想法、文章連結或說明"></textarea>
+                  <div>
+                    <input type="file" id="post-images" accept="image/*" multiple class="block w-full text-sm text-gray-700"/>
+                    <div id="post-upload-progress" class="text-xs text-gray-600 mt-1"></div>
+                  </div>
+                  <button type="submit" class="w-full py-2 bg-primary-blue text-white rounded-lg hover:bg-blue-700">發佈</button>
+                </form>
+              ` : `
+                <div class="text-sm text-gray-600">
+                  請先登入後即可發佈貼文。
+                  <button onclick="signInWithGoogle()" class="ml-2 px-3 py-1 text-white bg-primary-blue rounded-md">使用 Google 登入</button>
+                </div>
+              `}
+            </div>
+          </div>
+
+          <div class="lg:col-span-2">
+            <div id="post-feed" class="space-y-4">
+              ${ communityPosts.length===0 ? `
+                <div class="bg-white p-6 rounded-xl shadow-lg text-center text-gray-500">目前沒有貼文，成為第一個分享的人吧！</div>
+              ` : communityPosts.map(p=>`
+                <div class="bg-white p-5 rounded-xl shadow-lg">
+                  <div class="flex items-center mb-3">
+                    <div class="w-9 h-9 rounded-full bg-gray-200 overflow-hidden mr-3">
+                      ${ p.authorPhotoURL ? `<img src="${escapeHtml(p.authorPhotoURL)}" alt="" class="w-full h-full object-cover">` : '' }
+                    </div>
+                    <div class="flex-1">
+                      <div class="font-semibold text-gray-800">${escapeHtml(p.authorName||"使用者")}</div>
+                      <div class="text-xs text-gray-500">${timeAgo(p.createdAt)}</div>
+                    </div>
+                    ${ p.authorUid===currentUserId ? `
+                      <button class="text-red-600 text-sm hover:underline" onclick="deleteCommunityPost('${escapeHtml(p.id)}')">刪除</button>
+                    ` : ``}
+                  </div>
+                  <div class="text-gray-800 whitespace-pre-wrap mb-3">${escapeHtml(p.text||"")}</div>
+                  ${ (p.images||[]).length ? `
+                    <div class="grid grid-cols-2 md:grid-cols-3 gap-2">
+                      ${ p.images.map(img=>`
+                        <a href="${escapeHtml(img.url)}" target="_blank" class="block">
+                          <img src="${escapeHtml(img.url)}" alt="${escapeHtml(img.name||'')}" class="w-full h-32 object-cover rounded-md hover:opacity-90 transition">
+                        </a>
+                      `).join("") }
+                    </div>
+                  ` : ``}
+                </div>
+              `).join("")}
+            </div>
+          </div>
+        </div>
+      `;
+      if(window.lucide?.createIcons) lucide.createIcons();
+
+      const form = document.getElementById("post-form");
+      if(form){
+        form.addEventListener("submit", async (e)=>{
+          e.preventDefault();
+          if(!currentUserId){ showModal("請先登入","請先使用 Google 登入再發佈貼文。"); return; }
+          const text = document.getElementById("post-text").value.trim();
+          const files = document.getElementById("post-images").files;
+          const progEl = document.getElementById("post-upload-progress");
+          try{
+            progEl.textContent = files?.length ? "上傳中..." : "";
+            await createCommunityPost({ text, files });
+            progEl.textContent = "完成";
+            form.reset();
+            setTimeout(()=>{ progEl.textContent = ""; }, 800);
+          }catch(err){
+            console.error(err);
+            progEl.textContent = `失敗：${err.message}`;
+          }
+        });
+      }
+    }
+
+    // 側欄展開/收合（預設展開有文字，按漢堡切換為圖示）
     window.toggleSidebar = function(force){
       const sb = document.getElementById('app-sidebar');
       const main = document.getElementById('app-main');
@@ -1108,25 +1463,37 @@
       if(window.lucide?.createIcons) lucide.createIcons();
     };
 
-    // 啟動
+    function setActiveByView(view){
+      document.querySelectorAll('#app-sidebar .nav-item').forEach(el=>{
+        el.classList.toggle('active', el.getAttribute('data-view') === view);
+      });
+      if(window.lucide?.createIcons) lucide.createIcons();
+    }
+
+    function isAuthorized(){ return !!(isAuthReady && currentUserId); }
+
+    // 啟動：先渲染儀表板骨架，再初始化 Firebase，避免初次空白
     window.addEventListener('DOMContentLoaded', ()=>{
       const savedExpanded = (()=>{
         try{ return localStorage.getItem('sidebarExpanded') !== '0'; }catch{ return true; }
       })();
       const sb = document.getElementById('app-sidebar');
       const main = document.getElementById('app-main');
-      sb.classList.toggle('expanded', savedExpanded);
-      sb.classList.toggle('collapsed', !savedExpanded);
-      sb.style.width = savedExpanded ? '240px' : '72px';
+      if(sb){
+        sb.classList.toggle('expanded', savedExpanded);
+        sb.classList.toggle('collapsed', !savedExpanded);
+        sb.style.width = savedExpanded ? '240px' : '72px';
+      }
       if(main) main.style.marginLeft = savedExpanded ? '240px' : '72px';
       const btn = document.getElementById('btn-toggle');
       if(btn){
         btn.title = savedExpanded ? '收合' : '展開';
-        btn.innerHTML = savedExpanded ? '<i data-lucide="panel-left-close" class="nav-icon"></i>' : '<i data-lucide="panel-left-open" class="nav-icon"></i>';
+        btn.innerHTML = savedExpanded ? '<i data-lucide="panel-left-close" class="w-5 h-5"></i>' : '<i data-lucide="panel-left-open" class="w-5 h-5"></i>';
       }
 
-      currentView = "dashboard";
-      renderDashboard(true);
+      const loadingEl = document.getElementById("landing-loading");
+      if(loadingEl) loadingEl.classList.remove("hidden");
+
       initFirebase();
 
       if(window.lucide?.createIcons) lucide.createIcons();

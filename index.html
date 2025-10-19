@@ -44,7 +44,6 @@
       appId: "1:874700126533:web:5461432d0169b7de6ee62c"
     };
     window.__app_id = "taiwanplan-f7566";
-    // 改為密碼模式
     window.__auth_mode = "password";
     window.__sharepoint_flow_url = "REPLACE_WITH_YOUR_POWER_AUTOMATE_HTTP_TRIGGER_URL";
     window.__ai_summary_webapp_url = "https://script.google.com/macros/s/AKfycbzBaT08WiuMIpqVNrG70iTVMUFXY1X-1zSn0uKa3xgLa4KdUwFbL5q7xh5OwpJMAblAdQ/exec";
@@ -74,11 +73,17 @@
     #app-sidebar .nav-label{display:inline;white-space:nowrap;font-weight:600;font-size:.875rem}
     #app-sidebar.collapsed .nav-label{display:none}
     #app-main{transition:margin-left .2s ease}
-    .landing-bg{background:radial-gradient(1200px 600px at 85% 85%,#7c3aed30,transparent 60%),radial-gradient(1000px 500px at 0% 100%,#ec489930,transparent 55%),linear-gradient(180deg,#ffffff 0%,#f7f7f9 100%)}
+    .landing-bg{
+      background:
+        radial-gradient(1200px 600px at 85% 85%, rgba(124,58,237,0.18), transparent 60%),
+        radial-gradient(1000px 500px at 0% 100%, rgba(236,72,153,0.18), transparent 55%),
+        linear-gradient(180deg,#ffffff 0%,#f7f7fb 100%);
+    }
+    pre { white-space: pre-wrap; word-break: break-word; }
   </style>
 </head>
 
-<body>
+<body class="font-sans bg-gray-100">
   <section id="landing" class="landing-bg min-h-screen flex items-center justify-center px-4">
     <div class="max-w-md w-full">
       <div class="text-center mb-6">
@@ -103,7 +108,6 @@
           </div>
         </div>
 
-        <!-- Email/Password Auth Box -->
         <div id="email-auth-box" class="mt-6 space-y-4">
           <div>
             <label class="block text-sm font-medium text-gray-700">電子郵件</label>
@@ -117,13 +121,9 @@
           </div>
           <div class="grid grid-cols-2 gap-3">
             <button id="btn-email-signin"
-                    class="w-full py-3 rounded-xl bg-primary-blue hover:bg-blue-700 text-white font-semibold">
-              以帳號密碼登入
-            </button>
+                    class="w-full py-3 rounded-xl bg-primary-blue hover:bg-blue-700 text-white font-semibold">以帳號密碼登入</button>
             <button id="btn-email-signup"
-                    class="w-full py-3 rounded-xl bg-secondary-green hover:bg-green-700 text-white font-semibold">
-              註冊新帳號
-            </button>
+                    class="w-full py-3 rounded-xl bg-secondary-green hover:bg-green-700 text-white font-semibold">註冊新帳號</button>
           </div>
           <div id="auth-error" class="text-sm text-red-600"></div>
         </div>
@@ -230,6 +230,7 @@
     let budgetCaps = { personnelCap: 0, operatingCap: 0, equipmentCap: 0 };
     let selectedProjectId = null;
     let calendarInstance = null;
+    let miniCalendarInstance = null; // 儀錶板的迷你行事曆
 
     function escapeHtml(str){
       if(str==null) return "";
@@ -325,13 +326,14 @@
       }
     }
 
-    // AI 週/月報（略：保留原行為）
+    // AI 週/月報
     async function generateAIReport(mode){
       const url = AI_SUMMARY_WEBAPP_URL;
       if(!url || /REPLACE/.test(url)) { showModal("未設定 AI 端點", "請先部署 AI Web App URL 後再使用。"); return; }
       const box = document.getElementById("ai-summary-box");
       const dl  = document.getElementById("btn-ai-download");
-      box.textContent = "AI 生成中，請稍候..."; dl.disabled = true;
+      if (box) box.textContent = "AI 生成中，請稍候...";
+      if (dl) dl.disabled = true;
 
       const today = new Date(); let start, end;
       if(mode==="week"){
@@ -343,8 +345,12 @@
       }
 
       const ps = projects.map(p=>({ id:p.id, title:p.title||"", manager:p.manager||"", budget:n(p.budget), progress:n(p.progress), status:p.status||"" }));
-      const ts = tasks.filter(t=> inRange(t.dueDate||"", start, end)).map(t=>({ id:t.id, projectId:t.projectId||"", taskName:t.taskName||"", assignee:t.assignee||"", dueDate:t.dueDate||"", status:t.status||"" }));
-      const es = events.filter(ev=> overlapsRange(ev.startDate||"", ev.endDate||ev.startDate||"", start, end)).map(ev=>({ id:ev.id, projectId:ev.projectId||"", title:ev.title||"", assignee:ev.assignee||"", startDate:ev.startDate||"", endDate:ev.endDate||ev.startDate||"" }));
+      const ts = tasks.filter(t=> inRange(t.dueDate||"", start, end)).map(t=>({
+        id:t.id, projectId:t.projectId||"", taskName:t.taskName||"", assignee:t.assignee||"", dueDate:t.dueDate||"", status:t.status||""
+      }));
+      const es = events.filter(ev=> overlapsRange(ev.startDate||"", ev.endDate||ev.startDate||"", start, end)).map(ev=>({
+        id:ev.id, projectId:ev.projectId||"", title:ev.title||"", assignee:ev.assignee||"", startDate:ev.startDate||ev.date||"", endDate:ev.endDate||ev.startDate||ev.date||""
+      }));
 
       const payload = { action:"ai_summary", mode, start, end, projects:ps, tasks:ts, events:es };
 
@@ -352,18 +358,20 @@
         const resp = await fetch(url, { method:"POST", headers:{ "Content-Type":"text/plain;charset=utf-8" }, body: JSON.stringify(payload) });
         const data = await resp.json().catch(()=> ({}));
         const md = data?.summary || data?.text || "(無法產生報導)";
-        box.textContent = md;
-        dl.disabled = false;
-        dl.onclick = ()=>{
-          const blob = new Blob([md], { type: "text/markdown;charset=utf-8" });
-          const u = URL.createObjectURL(blob);
-          const a = document.createElement("a");
-          a.href = u; a.download = `project_report_${mode}_${start}_${end}.md`;
-          a.click(); URL.revokeObjectURL(u);
-        };
+        if (box) box.textContent = md;
+        if (dl){
+          dl.disabled = false;
+          dl.onclick = ()=>{
+            const blob = new Blob([md], { type: "text/markdown;charset=utf-8" });
+            const u = URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = u; a.download = `project_report_${mode}_${start}_${end}.md`;
+            a.click(); URL.revokeObjectURL(u);
+          };
+        }
       }catch(e){
         console.error(e);
-        box.textContent = "AI 產生失敗：" + (e?.message||String(e));
+        if (box) box.textContent = "AI 產生失敗：" + (e?.message||String(e));
       }
     }
 
@@ -449,6 +457,7 @@
       if(landing) landing.classList.remove("hidden");
       if(appShell) appShell.classList.add("hidden");
       if(window.lucide?.createIcons) lucide.createIcons();
+      wireEmailAuthButtons();
     }
 
     function showAppShell(){
@@ -529,6 +538,11 @@
       document.getElementById("btn-email-signup")?.addEventListener("click", (e)=>{ e.preventDefault(); window.signUpWithEmailPassword(); });
     }
 
+    // 登出
+    window.appSignOut = async function(){
+      try{ await signOut(auth); }catch(e){ console.error(e); }
+    };
+
     // 權限檢查
     function isAuthorized(){ return !!currentUserId; }
 
@@ -559,6 +573,7 @@
       onSnapshot(query(collection(db, EVENTS_COLLECTION_PATH), orderBy("startDate","asc")), (snap)=>{
         events = snap.docs.map(d=>({id:d.id, ...d.data()}));
         if(currentView==="calendar") renderCalendar();
+        if(currentView==="dashboard") renderDashboard(); // 讓迷你行事曆即時更新
       });
       onSnapshot(query(collection(db, FILES_COLLECTION_PATH), orderBy("uploadedAt","desc")), (snap)=>{
         files = snap.docs.map(d=>({id:d.id, ...d.data()}));
@@ -613,10 +628,16 @@
       if(currentView==="community") renderCommunity();
     }
 
-    // 儀表板（保留原行為，省略非核心 UI 細節）
+    // 儀錶板：完整呈現 AI 摘要與迷你行事曆
     function renderDashboard(){
       const c = document.getElementById("main-content");
       if(!c) return;
+
+      // 銷毀既有迷你行事曆避免重複
+      if (miniCalendarInstance) {
+        try { miniCalendarInstance.destroy(); } catch(_) {}
+        miniCalendarInstance = null;
+      }
 
       const totalProjects = projects.length;
       const completed = projects.filter(p => (n(p.progress)) >= 95).length;
@@ -670,17 +691,52 @@
           <div class="project-card bg-white p-6 rounded-xl shadow-lg border-t-4 border-primary-blue">
             <div class="flex items-center justify-between mb-2"><div class="font-semibold text-gray-800">人事費總預算</div><div class="text-sm text-gray-500">${fmtMoney(pc)}</div></div>
             <div class="w-full bg-gray-200 rounded-full h-3"><div class="progress-bar h-3 rounded-full ${barClass(pRate, pRemain)}" style="width:${(pRate*100).toFixed(0)}%"></div></div>
-            <div class="mt-2 text-sm text-gray-700 flex justify-between"><span>已用：<strong>${fmtMoney(personnelUsed)}</strong>（${(pRate*100).toFixed(0)}%）</span><span>${pRemain>=0 ? `餘額：${fmtMoney(pRemain)}` : `超支：${fmtMoney(-pRemain)}`}</span></div>
+            <div class="mt-2 text-sm text-gray-700 flex justify-between"><span>已用：<strong>${fmtMoney(personnelUsed)}</strong>（${(pRate*100).toFixed(0)}%）</span><span>${pRemain>=0 ? `餘額：${fmtMoney(pRemain)}` : `超支：${fmtMoney(Math.abs(pRemain))}`}</span></div>
           </div>
           <div class="project-card bg-white p-6 rounded-xl shadow-lg border-t-4 border-primary-blue">
             <div class="flex items-center justify-between mb-2"><div class="font-semibold text-gray-800">業務費總預算</div><div class="text-sm text-gray-500">${fmtMoney(oc)}</div></div>
             <div class="w-full bg-gray-200 rounded-full h-3"><div class="progress-bar h-3 rounded-full ${barClass(oRate, oRemain)}" style="width:${(oRate*100).toFixed(0)}%"></div></div>
-            <div class="mt-2 text-sm text-gray-700 flex justify-between"><span>已用：<strong>${fmtMoney(operatingUsed)}</strong>（${(oRate*100).toFixed(0)}%）</span><span>${oRemain>=0 ? `餘額：${fmtMoney(oRemain)}` : `超支：${fmtMoney(-oRemain)}`}</span></div>
+            <div class="mt-2 text-sm text-gray-700 flex justify-between"><span>已用：<strong>${fmtMoney(operatingUsed)}</strong>（${(oRate*100).toFixed(0)}%）</span><span>${oRemain>=0 ? `餘額：${fmtMoney(oRemain)}` : `超支：${fmtMoney(Math.abs(oRemain))}`}</span></div>
           </div>
           <div class="project-card bg-white p-6 rounded-xl shadow-lg border-t-4 border-primary-blue">
             <div class="flex items-center justify-between mb-2"><div class="font-semibold text-gray-800">設備費總預算</div><div class="text-sm text-gray-500">${fmtMoney(ec)}</div></div>
             <div class="w-full bg-gray-200 rounded-full h-3"><div class="progress-bar h-3 rounded-full ${barClass(eRate, eRemain)}" style="width:${(eRate*100).toFixed(0)}%"></div></div>
-            <div class="mt-2 text-sm text-gray-700 flex justify-between"><span>已用：<strong>${fmtMoney(equipmentUsed)}</strong>（${(eRate*100).toFixed(0)}%）</span><span>${eRemain>=0 ? `餘額：${fmtMoney(eRemain)}` : `超支：${fmtMoney(-eRemain)}`}</span></div>
+            <div class="mt-2 text-sm text-gray-700 flex justify-between"><span>已用：<strong>${fmtMoney(equipmentUsed)}</strong>（${(eRate*100).toFixed(0)}%）</span><span>${eRemain>=0 ? `餘額：${fmtMoney(eRemain)}` : `超支：${fmtMoney(Math.abs(eRemain))}`}</span></div>
+          </div>
+        </div>
+
+        <!-- 新增：AI 摘要 + 迷你行事曆 -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+          <div class="project-card bg-white p-6 rounded-xl shadow-lg">
+            <h3 class="text-xl font-semibold text-gray-800 mb-4 flex items-center">
+              <i data-lucide="brain-circuit" class="w-5 h-5 mr-2 text-primary-blue"></i> AI 週/月報摘要
+            </h3>
+            <p class="text-sm text-gray-500 mb-3">依據當月/當週專案、任務、行事曆資料，自動生成摘要。</p>
+            <div class="flex gap-3 mb-3">
+              <button class="px-3 py-2 rounded-lg bg-primary-blue text-white hover:bg-blue-700 text-sm" onclick="generateAIReport('week')">產生本週摘要</button>
+              <button class="px-3 py-2 rounded-lg bg-secondary-green text-white hover:bg-green-700 text-sm" onclick="generateAIReport('month')">產生本月摘要</button>
+              <button id="btn-ai-download" class="px-3 py-2 rounded-lg bg-gray-200 text-gray-700 hover:bg-gray-300 text-sm" disabled>下載摘要</button>
+            </div>
+            <div class="border rounded-lg p-3 bg-gray-50">
+              <pre id="ai-summary-box" class="whitespace-pre-wrap text-sm text-gray-800">點擊上方按鈕生成 AI 摘要...</pre>
+            </div>
+            <div class="mt-3 text-right">
+              <button class="inline-flex items-center gap-2 text-primary-blue hover:text-blue-700 text-sm" onclick="setView('report')">
+                <i data-lucide="arrow-right" class="w-4 h-4"></i> 前往完整報表
+              </button>
+            </div>
+          </div>
+
+          <div class="project-card bg-white p-6 rounded-xl shadow-lg">
+            <h3 class="text-xl font-semibold text-gray-800 mb-4 flex items-center">
+              <i data-lucide="calendar" class="w-5 h-5 mr-2 text-primary-blue"></i> 行事曆（本月）
+            </h3>
+            <div id="mini-calendar" class="rounded-lg border bg-white" style="min-height:520px;"></div>
+            <div class="mt-3 text-right">
+              <button class="inline-flex items-center gap-2 text-primary-blue hover:text-blue-700 text-sm" onclick="setView('calendar')">
+                <i data-lucide="arrow-right" class="w-4 h-4"></i> 前往完整行事曆
+              </button>
+            </div>
           </div>
         </div>
 
@@ -741,7 +797,7 @@
             <div>
               <label class="block text-sm font-medium text-gray-700">選擇專案</label>
               <select id="update-project-id" class="mt-1 block w-full rounded-md border-gray-300 p-2 border">
-                ${ projects.length>0 ? projects.map(p=>`<option value="${escapeHtml(p.id)}">${escapeHtml(p.id)} - ${escapeHtml(p.title)}</option>`).join("") : '<option value="">請先新增專案</option>'}
+                ${ projects.length>0 ? projects.map(p=>`<option value="${escapeHtml(p.id)}">${escapeHtml(p.id)} - ${escapeHtml(p.title)}</option>`).join("") : '<option value="">請先新增專案</option>' }
               </select>
             </div>
             <div>
@@ -761,6 +817,7 @@
       `;
       if(window.lucide?.createIcons) lucide.createIcons();
 
+      // 綁定即時更新表單
       document.getElementById("integration-form")?.addEventListener("submit", async (e)=>{
         e.preventDefault();
         const projectId = document.getElementById("update-project-id").value;
@@ -789,9 +846,30 @@
           feedback.className="mt-4 text-sm text-red-600"; feedback.textContent="提交更新失敗：資料庫錯誤。";
         }
       });
+
+      // 初始化儀錶板迷你行事曆
+      const calEl = document.getElementById("mini-calendar");
+      if (calEl && window.FullCalendar?.Calendar) {
+        const evs = (events||[]).map(ev => ({
+          id: ev.id,
+          title: `${ev.title || "事件"}${ev.projectId ? `（${ev.projectId}）` : ""}`,
+          start: ev.startDate || ev.date || "",
+          end: ev.endDate || ev.startDate || ev.date || "",
+          allDay: true
+        }));
+
+        miniCalendarInstance = new FullCalendar.Calendar(calEl, {
+          initialView: "dayGridMonth",
+          height: "auto",
+          headerToolbar: { left: "prev,next today", center: "title", right: "" },
+          events: evs,
+          firstDay: 1
+        });
+        miniCalendarInstance.render();
+      }
     }
 
-    // 新增專案（保留原行為）
+    // 新增專案
     function isValidProjectId(id){ return /^[A-Za-z0-9_-]{3,64}$/.test(id||""); }
     async function handleNewProjectSubmission(e){
       e.preventDefault();
@@ -926,7 +1004,7 @@
       document.getElementById("new-project-form")?.addEventListener("submit", handleNewProjectSubmission);
     }
 
-    // 檔案上傳/刪除（保留原行為）
+    // 檔案上傳/刪除
     async function uploadProjectFiles(projectId, fileList, onProgress){
       for(const file of fileList){
         const safeName = file.name.replace(/[^\w.\-() ]+/g, "_");
@@ -963,7 +1041,7 @@
     }
     window.deleteProjectFile = deleteProjectFile;
 
-    // 任務管理（保留原行為，省略列表細節渲染）
+    // 任務管理
     function renderTaskManagement(){
       const c = document.getElementById("main-content");
       c.innerHTML = `
@@ -977,7 +1055,7 @@
               <div>
                 <label class="block text-sm font-medium text-gray-700">所屬專案</label>
                 <select id="task-project-id" class="mt-1 block w-full rounded-md border-gray-300 p-2 border">
-                  ${ projects.length>0 ? projects.map(p=>`<option value="${escapeHtml(p.id)}">${escapeHtml(p.id)} - ${escapeHtml(p.title)}</option>`).join("") : '<option value="">請先新增專案</option>'}
+                  ${ projects.length>0 ? projects.map(p=>`<option value="${escapeHtml(p.id)}">${escapeHtml(p.id)} - ${escapeHtml(p.title)}</option>`).join("") : '<option value="">請先新增專案</option>' }
                 </select>
               </div>
               <div>
@@ -1000,106 +1078,236 @@
           </div>
 
           <div class="lg:col-span-2 bg-white p-6 rounded-xl shadow-lg">
-            <h3 class="text-xl font-semibold text-gray-800 mb-4 border-b pb-2">所有任務追蹤</h3>
-            <div class="flex space-x-3 mb-4 text-sm">
-              <select id="task-filter-manager" class="rounded-md border-gray-300 p-2 border">
-                <option value="">所有負責人</option>
-                ${ managerOptionsHtml() }
-              </select>
-              <select id="task-filter-status" class="rounded-md border-gray-300 p-2 border">
-                <option value="">所有狀態</option>
-                <option value="待辦">待辦</option>
-                <option value="進行中">進行中</option>
-                <option value="完成">完成</option>
-                <option value="更新">即時更新</option>
-              </select>
-              <button onclick="renderTaskList()" class="px-3 py-2 bg-gray-100 rounded-lg text-gray-700 hover:bg-gray-200">過濾</button>
+            <h3 class="text-xl font-semibold text-gray-800 mb-4 border-b pb-2">所有任務</h3>
+            <div class="overflow-x-auto">
+              <table class="min-w-full divide-y divide-gray-200">
+                <thead class="bg-gray-50">
+                  <tr>
+                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">專案</th>
+                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">任務</th>
+                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">負責人</th>
+                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">截止</th>
+                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">狀態</th>
+                  </tr>
+                </thead>
+                <tbody class="bg-white divide-y divide-gray-200">
+                  ${
+                    tasks.map(t => `
+                      <tr>
+                        <td class="px-4 py-3 text-sm">${escapeHtml(t.projectId || "")}</td>
+                        <td class="px-4 py-3 text-sm">${escapeHtml(t.taskName || "")}</td>
+                        <td class="px-4 py-3 text-sm">${escapeHtml(t.assignee || "")}</td>
+                        <td class="px-4 py-3 text-sm">${escapeHtml(tsToDateStr(t.dueDate))}</td>
+                        <td class="px-4 py-3 text-sm">${escapeHtml(t.status || "")}</td>
+                      </tr>
+                    `).join("")
+                  }
+                </tbody>
+              </table>
             </div>
-            <div id="current-tasks-list" class="space-y-2"></div>
           </div>
         </div>
       `;
       if(window.lucide?.createIcons) lucide.createIcons();
 
-      document.getElementById("new-task-form")?.addEventListener("submit", handleNewTaskSubmission);
-      renderTaskList();
+      document.getElementById("new-task-form")?.addEventListener("submit", async (e)=>{
+        e.preventDefault();
+        if(!isAuthorized()){ showModal("請先登入","請先登入後再操作。"); return; }
+        const projectId = document.getElementById("task-project-id").value;
+        const taskName  = document.getElementById("task-name").value;
+        const assignee  = document.getElementById("task-assignee").value;
+        const dueDate   = document.getElementById("task-due-date").value;
+        const fb = document.getElementById("task-form-feedback");
+        if(!projectId || !taskName || !assignee || !dueDate){
+          fb.className="mt-4 text-sm text-red-600"; fb.textContent="請完整填寫任務資訊。"; return;
+        }
+        try{
+          await addDoc(collection(db, TASKS_COLLECTION_PATH), {
+            projectId, taskName, assignee, dueDate, status:"待辦",
+            createdAt: serverTimestamp(), reporterId: currentUserId
+          });
+          fb.className="mt-4 text-sm text-secondary-green"; fb.textContent="任務已建立。";
+          (document.getElementById("new-task-form") as any)?.reset?.();
+        }catch(e){ console.error(e); fb.className="mt-4 text-sm text-red-600"; fb.textContent="任務建立失敗。"; }
+      });
     }
 
-    async function handleNewTaskSubmission(e){
-      e.preventDefault();
-      const feedback = document.getElementById("task-form-feedback");
-      if(!isAuthorized()){ showModal("請先登入","請先登入後再分配任務。"); return; }
-
-      const projectId = document.getElementById("task-project-id").value;
-      const projectTitle = projects.find(p=>p.id===projectId)?.title || projectId;
-      const taskName = document.getElementById("task-name").value;
-      const assignee = document.getElementById("task-assignee").value;
-      const dueDate = document.getElementById("task-due-date").value;
-
-      if(!projectId){
-        feedback.className="mt-4 text-sm text-red-600";
-        feedback.textContent="請先選擇專案。"; return;
-      }
-      try{
-        const taskRef = await addDoc(collection(db, TASKS_COLLECTION_PATH), {
-          projectId, taskName, assignee, dueDate, status:"待辦",
-          createdAt: serverTimestamp(), reporterId: currentUserId
-        });
-
-        await addDoc(collection(db, EVENTS_COLLECTION_PATH), {
-          projectId, title: taskName, assignee, startDate: dueDate, endDate: dueDate,
-          createdAt: serverTimestamp(), reporterId: currentUserId
-        });
-
-        feedback.className="mt-4 text-sm text-secondary-green";
-        feedback.textContent="任務已建立。";
-        document.getElementById("new-task-form").reset();
-      }catch(err){
-        console.error(err);
-        feedback.className="mt-4 text-sm text-red-600";
-        feedback.textContent="建立任務失敗：資料庫錯誤。";
-      }
-    }
-
-    function renderTaskList(){
-      const wrap = document.getElementById("current-tasks-list");
-      if(!wrap) return;
-      const mgr = document.getElementById("task-filter-manager")?.value || "";
-      const st  = document.getElementById("task-filter-status")?.value || "";
-      let list = tasks.slice();
-      if(mgr) list = list.filter(t=> (t.assignee||"")===mgr);
-      if(st)  list = list.filter(t=> (t.status||"")===st);
-      wrap.innerHTML = list.map(t=>`
-        <div class="border rounded-lg p-3 flex items-center justify-between">
-          <div>
-            <div class="font-medium">${escapeHtml(t.taskName||"")}</div>
-            <div class="text-xs text-gray-500">專案：${escapeHtml(t.projectId||"")}・負責：${escapeHtml(t.assignee||"")}・到期：${escapeHtml(tsToDateStr(t.dueDate)||"")}</div>
+    // 專案詳情（含檔案）
+    function renderProjectDetails(projectId){
+      const c = document.getElementById("main-content");
+      const p = projects.find(x=>x.id===projectId);
+      if(!p){
+        c.innerHTML = `
+          <div class="bg-white p-6 rounded-xl shadow-lg">
+            <p class="text-gray-600">找不到專案，請從列表選擇。</p>
+            <button class="mt-4 px-4 py-2 bg-primary-blue text-white rounded-lg" onclick="setView('dashboard')">返回儀錶板</button>
           </div>
-          <div class="text-xs px-2 py-1 rounded-full bg-gray-100">${escapeHtml(t.status||"")}</div>
+        `;
+        return;
+      }
+      const projectFiles = files.filter(f=>f.projectId===projectId);
+
+      c.innerHTML = `
+        <h2 class="text-3xl font-bold text-gray-800 mb-6 border-b pb-2 flex items-center">
+          <i data-lucide="layout-dashboard" class="w-7 h-7 mr-3 text-primary-blue"></i> 專案詳情 - ${escapeHtml(p.title||p.id)}
+        </h2>
+
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div class="lg:col-span-2 space-y-6">
+            <div class="bg-white p-6 rounded-xl shadow-lg">
+              <h3 class="text-xl font-semibold text-gray-800 mb-4">基本資訊</h3>
+              <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                <div><span class="text-gray-500">編號：</span><span class="font-medium">${escapeHtml(p.id)}</span></div>
+                <div><span class="text-gray-500">主持人：</span><span class="font-medium">${escapeHtml(p.manager||"")}</span></div>
+                <div><span class="text-gray-500">進度：</span><span class="font-medium">${n(p.progress)}%</span></div>
+                <div><span class="text-gray-500">狀態：</span><span class="font-medium">${escapeHtml(p.status||"")}</span></div>
+                <div><span class="text-gray-500">預算概算：</span><span class="font-medium">${fmtMoney(n(p.budget))}</span></div>
+              </div>
+            </div>
+
+            <div class="bg-white p-6 rounded-xl shadow-lg">
+              <h3 class="text-xl font-semibold text-gray-800 mb-4">相關任務</h3>
+              <ul class="space-y-2">
+                ${ tasks.filter(t=>t.projectId===projectId).map(t=>`
+                  <li class="p-3 border rounded-lg flex justify-between items-center">
+                    <div>
+                      <div class="font-medium">${escapeHtml(t.taskName||"")}</div>
+                      <div class="text-xs text-gray-500">負責：${escapeHtml(t.assignee||"")} · 截止：${escapeHtml(tsToDateStr(t.dueDate))} · 狀態：${escapeHtml(t.status||"")}</div>
+                    </div>
+                  </li>
+                `).join("") || '<li class="text-gray-500 text-sm">尚無任務</li>'}
+              </ul>
+            </div>
+          </div>
+
+          <div class="lg:col-span-1">
+            <div class="bg-white p-6 rounded-xl shadow-lg">
+              <h3 class="text-xl font-semibold text-gray-800 mb-4">專案檔案</h3>
+              <div class="space-y-3">
+                <div>
+                  <input id="file-input" type="file" multiple class="block w-full text-sm text-gray-700">
+                  <button id="btn-upload-files" class="mt-2 w-full px-3 py-2 rounded-lg bg-primary-blue text-white hover:bg-blue-700 text-sm">上傳檔案</button>
+                  <div id="upload-progress" class="text-xs text-gray-600 mt-2"></div>
+                </div>
+                <div class="border-t pt-3">
+                  <ul class="space-y-2">
+                    ${
+                      projectFiles.map(f => `
+                        <li class="flex items-center justify-between p-2 border rounded-lg">
+                          <a class="text-primary-blue hover:underline text-sm truncate" href="${escapeHtml(f.url||'#')}" target="_blank" rel="noopener">${escapeHtml(f.name||"未命名")}</a>
+                          <div class="flex items-center gap-2">
+                            <span class="text-xs text-gray-500">${(f.size||0).toLocaleString()} bytes</span>
+                            <button class="text-red-600 hover:text-red-800 text-xs" onclick="deleteProjectFile('${escapeHtml(f.id)}')">刪除</button>
+                          </div>
+                        </li>
+                      `).join("") || '<li class="text-gray-500 text-sm">尚無檔案</li>'
+                    }
+                  </ul>
+                </div>
+              </div>
+            </div>
+
+            <div class="mt-6">
+              <button class="w-full px-4 py-2 bg-gray-200 hover:bg-gray-300 rounded-lg text-sm" onclick="setView('dashboard')">返回儀錶板</button>
+            </div>
+          </div>
         </div>
-      `).join("") || `<div class="text-gray-500 text-sm">目前沒有符合條件的任務</div>`;
+      `;
+      if(window.lucide?.createIcons) lucide.createIcons();
+
+      document.getElementById("btn-upload-files")?.addEventListener("click", async ()=>{
+        if(!isAuthorized()){ showModal("請先登入","請先登入後再操作。"); return; }
+        const input = document.getElementById("file-input");
+        const prog = document.getElementById("upload-progress");
+        const list = input?.files;
+        if(!list || list.length===0){ prog.textContent = "請先選擇檔案。"; return; }
+        prog.textContent = "上傳中...";
+        try{
+          await uploadProjectFiles(projectId, list, (pct, name)=>{ prog.textContent = `上傳中 ${pct}% - ${name}`; });
+          prog.textContent = "上傳完成。";
+        }catch(e){ console.error(e); prog.textContent = "上傳失敗。"; }
+      });
     }
 
-    // 行事曆/報表/社群等視圖渲染（此處略，沿用原本行為）
-    function renderProjectDetails(){ /* ...沿用原有實作... */ }
-    function renderCalendar(){ /* ...沿用原有實作... */ }
-    function renderReport(){ /* ...沿用原有實作... */ }
-    function renderCommunity(){ /* ...沿用原有實作... */ }
+    // 行事曆（完整頁）
+    function renderCalendar(){
+      const c = document.getElementById("main-content");
+      c.innerHTML = `
+        <h2 class="text-3xl font-bold text-gray-800 mb-6 border-b pb-2 flex items-center">
+          <i data-lucide="calendar" class="w-7 h-7 mr-3 text-primary-blue"></i> 行事曆
+        </h2>
+        <div class="bg-white p-6 rounded-xl shadow-lg">
+          <div id="full-calendar"></div>
+        </div>
+      `;
+      if(window.lucide?.createIcons) lucide.createIcons();
 
-    // 登出
-    window.appSignOut = async function(){
-      try{
-        await signOut(auth);
-        showModal("已登出","您已成功登出。");
-      }catch(e){
-        console.error(e);
-        showModal("登出失敗", e?.message || String(e));
+      const calEl = document.getElementById("full-calendar");
+      if (calendarInstance) { try{ calendarInstance.destroy(); }catch(_){} calendarInstance = null; }
+
+      if (calEl && window.FullCalendar?.Calendar){
+        calendarInstance = new FullCalendar.Calendar(calEl, {
+          headerToolbar: { left: 'prev,next today', center: 'title', right: 'dayGridMonth,timeGridWeek,listWeek' },
+          initialView: 'dayGridMonth',
+          navLinks: true,
+          height: 720,
+          firstDay: 1,
+          events: (events||[]).map(ev=>({
+            id: ev.id,
+            title: `${ev.title||'事件'}${ev.projectId?`（${ev.projectId}）`:""}`,
+            start: ev.startDate || ev.date || "",
+            end: ev.endDate || ev.startDate || ev.date || "",
+            allDay: true
+          }))
+        });
+        calendarInstance.render();
       }
-    };
+    }
 
-    // 初始化
-    wireEmailAuthButtons();
+    // AI 報表（完整頁）
+    function renderReport(){
+      const c = document.getElementById("main-content");
+      c.innerHTML = `
+        <h2 class="text-3xl font-bold text-gray-800 mb-6 border-b pb-2 flex items-center">
+          <i data-lucide="brain" class="w-7 h-7 mr-3 text-primary-blue"></i> AI 報表中心
+        </h2>
+        <div class="bg-white p-6 rounded-xl shadow-lg">
+          <div class="flex flex-wrap gap-3 mb-3">
+            <button class="px-3 py-2 rounded-lg bg-primary-blue text-white hover:bg-blue-700 text-sm" onclick="generateAIReport('week')">產生本週摘要</button>
+            <button class="px-3 py-2 rounded-lg bg-secondary-green text-white hover:bg-green-700 text-sm" onclick="generateAIReport('month')">產生本月摘要</button>
+            <button id="btn-ai-download" class="px-3 py-2 rounded-lg bg-gray-200 text-gray-700 hover:bg-gray-300 text-sm" disabled>下載摘要</button>
+          </div>
+          <div class="border rounded-lg p-3 bg-gray-50">
+            <pre id="ai-summary-box" class="whitespace-pre-wrap text-sm text-gray-800">點擊上方按鈕生成 AI 摘要...</pre>
+          </div>
+        </div>
+      `;
+      if(window.lucide?.createIcons) lucide.createIcons();
+    }
+
+    // 社群
+    function renderCommunity(){
+      const c = document.getElementById("main-content");
+      c.innerHTML = `
+        <h2 class="text-3xl font-bold text-gray-800 mb-6 border-b pb-2 flex items-center">
+          <i data-lucide="messages-square" class="w-7 h-7 mr-3 text-primary-blue"></i> 資訊交流
+        </h2>
+        <div class="bg-white p-6 rounded-xl shadow-lg space-y-4">
+          ${ communityPosts.map(p => `
+            <div class="border rounded-lg p-4">
+              <div class="font-semibold">${escapeHtml(p.title || "無標題")}</div>
+              <div class="text-sm text-gray-700 mt-1">${escapeHtml(p.content || "")}</div>
+              <div class="text-xs text-gray-500 mt-2">${escapeHtml(p.author || "匿名")} · ${escapeHtml(tsToDateStr(p.createdAt))}</div>
+            </div>
+          `).join("") || '<div class="text-gray-500">目前沒有貼文。</div>' }
+        </div>
+      `;
+      if(window.lucide?.createIcons) lucide.createIcons();
+    }
+
+    // 啟動
     initFirebase();
+    wireEmailAuthButtons();
   </script>
 </body>
 </html>

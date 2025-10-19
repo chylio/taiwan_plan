@@ -106,15 +106,12 @@
 
     /* 簡易彈窗 */
     .modal-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;z-index:70}
-    .modal-card{background:#fff;border-radius:14px;max-width:42rem;width:calc(100vw - 24px);padding:16px}
+    .modal-card{background:#fff;border-radius:14px;max-width:46rem;width:calc(100vw - 24px);padding:16px}
     .form-row{display:flex;gap:.75rem}
     .form-row>*{flex:1}
     .table{width:100%;border-collapse:collapse}
     .table th,.table td{border-bottom:1px solid #e5e7eb;padding:.5rem .6rem;text-align:left}
     .chip{display:inline-block;padding:.15rem .5rem;border-radius:999px;font-size:.75rem}
-    .chip.todo{background:#eef2ff;color:#3730a3}
-    .chip.wip{background:#ecfeff;color:#155e75}
-    .chip.done{background:#ecfdf5;color:#065f46}
     .btn{display:inline-flex;align-items:center;gap:.4rem;padding:.45rem .75rem;border-radius:.6rem}
     .btn-primary{background:#1e40af;color:#fff}
     .btn-gray{background:#f3f4f6}
@@ -137,13 +134,11 @@
         <h1 class="text-3xl font-extrabold text-gray-900 text-center">Welcome back! 歡迎回來！</h1>
         <p class="text-sm text-gray-500 text-center mt-2">請選擇登入方式</p>
 
-        <!-- Google 登入 -->
         <button id="btn-google" onclick="signInWithGoogle()" disabled
                 class="mt-4 w-full py-3 rounded-xl bg-blue-800 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold flex items-center justify-center gap-2">
           <img alt="" src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" class="w-5 h-5"/> 使用 Google 登入
         </button>
 
-        <!-- Email/Password 備援登入 -->
         <div class="mt-6">
           <div class="text-center text-sm text-gray-500 mb-2">或使用 Email 登入</div>
           <form id="email-form" class="space-y-3">
@@ -229,7 +224,6 @@
     </aside>
 
     <main id="app-main" class="flex-grow p-8" style="margin-left:240px;">
-      <!-- 連線/權限狀態列 -->
       <div id="status-banner" class="bg-yellow-100 text-yellow-900 border border-yellow-300"></div>
       <div id="main-content" class="w-full"></div>
     </main>
@@ -266,7 +260,7 @@
     } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
     import {
       getFirestore, doc, addDoc, setDoc, updateDoc, deleteDoc,
-      onSnapshot, collection, query, orderBy, serverTimestamp, setLogLevel, getDoc
+      onSnapshot, collection, query, orderBy, serverTimestamp, setLogLevel
     } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
     import {
       getStorage, ref as sRef, uploadBytesResumable, getDownloadURL, deleteObject
@@ -294,7 +288,6 @@
     let listenersStarted = false;
     let userProfile = { displayName:"", email:"", photoURL:"" };
 
-    // 設定
     const APP_ID = window.__app_id || "default-app-id";
     const firebaseConfig = window.__firebase_config_object || null;
 
@@ -415,13 +408,12 @@
     }
     window.clearAuthStuck = clearAuthStuck;
 
-    // 追蹤 redirect 啟動與回來的還原狀態（避免「回來卻沒人」）
     const REDIRECT_FLAG_KEY = 'auth:redirect:startedAt';
     function markRedirectStart(){ try{ localStorage.setItem(REDIRECT_FLAG_KEY, String(Date.now())); }catch{} }
     function redirectStartedMs(){ try{ return Number(localStorage.getItem(REDIRECT_FLAG_KEY)||0); }catch{ return 0 } }
     function clearRedirectFlag(){ try{ localStorage.removeItem(REDIRECT_FLAG_KEY); }catch{} }
 
-    // Google 登入：popup → redirect（僅當 sessionStorage 可用）＋ 強化錯誤提示
+    // Google 登入：popup → redirect（僅當 sessionStorage 可用）
     window.signInWithGoogle = async function(){
       if(isLikelyInAppBrowser()){
         inAppOverlay.style.display = 'block';
@@ -442,9 +434,8 @@
           logDbg('OK','signInWithPopup success');
           return;
         }catch(e){
-          const code = e?.code || "";
-          logDbg('WARN','signInWithPopup failed', {code, message:e?.message});
           const ssOK = canUseSessionStorage();
+          logDbg('WARN','signInWithPopup failed', {code:e?.code, message:e?.message});
           if(ssOK){
             setDbgState('redirecting','warn'); logDbg('INFO','fallback to signInWithRedirect');
             markRedirectStart();
@@ -454,8 +445,6 @@
             openWindowBtn?.classList.remove('hidden');
             resetBtn?.classList.remove('hidden');
             setBanner('warn', '瀏覽器封鎖了登入視窗或儲存機制，請允許彈出視窗、改用外部瀏覽器，或使用 Email 登入。');
-            showModal("瀏覽器封鎖了登入視窗",
-              "請允許彈出視窗（pop-up），或點「在新視窗開啟」，或改用外部瀏覽器（Chrome/Edge/Safari 非無痕），或改用下方 Email 登入。");
           }
         }
       }catch(e){
@@ -535,31 +524,6 @@
       return null;
     }
 
-    // 等待 auth 狀態回來（onAuthStateChanged 或 getRedirectResult 其一先到）
-    function waitForAuthUser(timeoutMs=15000){
-      return new Promise(async (resolve)=>{
-        let settled = false;
-        const t = setTimeout(()=>{ if(!settled){ settled = true; resolve(null); } }, timeoutMs);
-
-        const unsub = onAuthStateChanged(auth, (user)=>{
-          if(!settled && user){ settled = true; clearTimeout(t); unsub(); resolve(user); }
-        });
-
-        try{
-          const rr = await getRedirectResult(auth);
-          if(!settled && rr?.user){ settled = true; clearTimeout(t); unsub(); resolve(rr.user); }
-          else logDbg('INFO','getRedirectResult '+(rr?.user?'user':'empty'));
-        }catch(e){
-          logDbg('ERR','getRedirectResult error', {code:e?.code, message:e?.message});
-          if(e?.code === 'auth/unauthorized-domain'){
-            setBanner('error','Google 登入被拒（unauthorized-domain）。請到 Firebase Console → Authentication → Settings → Authorized domains 加入 chylio.github.io。');
-          }else if((e?.message||'').toLowerCase().includes('initial state')){
-            setBanner('warn','瀏覽器清除了登入初始狀態（missing initial state）。請允許此站的 Cookie/重新導向，或改用 Email 登入/外部瀏覽器。');
-          }
-        }
-      });
-    }
-
     async function initFirebase(){
       if(auth) return;
       if(!firebaseConfig){ showModal("設定錯誤","缺少 Firebase 設定"); return; }
@@ -574,7 +538,6 @@
       openWindowBtn?.classList.toggle('hidden', !isLikelyInAppBrowser());
       setDbgState('restoring','warn'); logDbg('INFO','init: restoring...', {ua:navigator.userAgent, ssOK: canUseSessionStorage(), inApp:isLikelyInAppBrowser(), path: location.pathname});
 
-      // 逾時保護
       let settled=false;
       const safetyTimer=setTimeout(()=>{
         if(!settled){
@@ -586,27 +549,32 @@
         }
       },7000);
 
-      // onAuthStateChanged
       onAuthStateChanged(auth, (user)=>{
         logDbg('INFO','onAuthStateChanged', !!user ? 'user present' : 'no user');
         applyUser(user);
         btnGoogle?.removeAttribute('disabled');
       });
 
-      // 選擇持久化
       try{ await choosePersistence(auth); }catch(e){ logDbg('ERR','choosePersistence error', {code:e?.code, message:e?.message}); }
 
-      // 若剛剛從 redirect 回來，等待還原
+      // 若剛剛從 redirect 回來，嘗試還原
       const redirectedAt = redirectStartedMs();
       if(redirectedAt){
-        setDbgState('restoring','warn');
-        const u = await waitForAuthUser(15000);
-        clearRedirectFlag();
-        if(u){
-          logDbg('OK','redirect restored',{uid:u.uid,email:u.email});
-          applyUser(u);
-        }else{
-          setBanner('warn','Google 重新導向回來但無法取得登入狀態。請允許彈出視窗與 Cookie，或改用 Email 登入。');
+        try{
+          const rr = await getRedirectResult(auth);
+          if(rr?.user){
+            logDbg('OK','getRedirectResult user', {uid:rr.user.uid, email:rr.user.email});
+            applyUser(rr.user);
+          }else{
+            logDbg('INFO','getRedirectResult empty');
+          }
+        }catch(e){
+          logDbg('ERR','getRedirectResult error', {code:e?.code, message:e?.message});
+          if(e?.code === 'auth/unauthorized-domain'){
+            setBanner('error','Google 登入被拒（unauthorized-domain）。請到 Firebase Authentication → Authorized domains 加入 chylio.github.io。');
+          }
+        }finally{
+          clearRedirectFlag();
         }
       }
 
@@ -656,8 +624,8 @@
       logDbg('ERR','onSnapshot '+source, {code: err?.code, message: err?.message});
       if(err?.code === 'permission-denied'){
         setBanner('error', `資料庫讀取被拒絕（permission-denied）。<br/>
-          請到 Firebase Console → Firestore Database → Rules，暫時設定允許已登入使用者讀寫
-          <code>artifacts/${APP_ID}/public/**</code> 的文件。`);
+          請到 Firebase Firestore Rules，暫時允許已登入使用者讀寫
+          <code>artifacts/${APP_ID}/public/**</code>。`);
       }else{
         setBanner('warn', `無法讀取 ${source} 資料：${err?.message || '未知錯誤'}`);
       }
@@ -703,100 +671,98 @@
       );
     }
 
-    // ============ 儀表板 ============
+    // ============ 儀表板（每個專案呈現） ============
     function renderDashboard(isBoot=false){
       const c=document.getElementById("main-content"); if(!c) return;
 
+      // 總覽摘要（可保留）
       const totalProjects=projects.length;
       const completed=projects.filter(p=> (n(p.progress))>=95 ).length;
       const totalBudget=projects.reduce((s,p)=>s+n(p.budget),0);
-      const empty=totalProjects===0;
 
-      let personnelUsed=0,operatingUsed=0,equipmentUsed=0;
-      for(const p of projects){
-        const pu=('personnelUsed' in p)?n(p.personnelUsed):n(p.personnelBudget);
-        const ou=('operatingUsed' in p)?n(p.operatingUsed):n(p.operatingBudget);
-        const eu=('equipmentUsed' in p)?n(p.equipmentUsed):n(p.equipmentBudget);
-        personnelUsed+=pu; operatingUsed+=ou; equipmentUsed+=eu;
-      }
-      const pc=n(budgetCaps.personnelCap), oc=n(budgetCaps.operatingCap), ec=n(budgetCaps.equipmentCap);
-      const pRate=pc>0?Math.max(0,Math.min(1,personnelUsed/pc)):0;
-      const oRate=oc>0?Math.max(0,Math.min(1,operatingUsed/oc)):0;
-      const eRate=ec>0?Math.max(0,Math.min(1,equipmentUsed/ec)):0;
-      const pRemain=pc-personnelUsed, oRemain=oc-operatingUsed, eRemain=ec-equipmentUsed;
-      const barClass=(rate,remain)=> remain>=0?(rate>=0.95?"bg-yellow-400":"bg-blue-800"):"bg-red-500";
-
-      function sectionCard(title, value, icon, color){
+      // 專案清單
+      const cards = projects.map(p=>{
+        const personnel=n(p.personnelBudget), operating=n(p.operatingBudget), equipment=n(p.equipmentBudget);
+        const total = personnel+operating+equipment || n(p.budget);
+        const progress = n(p.progress)||0;
         return `
-          <div class="project-card bg-white p-6 rounded-xl shadow-lg border-t-4 ${color}">
-            <div class="flex items-center justify-between">
-              <div class="text-gray-500">${title}</div>
-              <i data-lucide="${icon}" class="w-8 h-8 ${color.includes('blue')?'text-blue-800':color.includes('green')?'text-green-600':'text-orange-600'}"></i>
+          <div class="project-card bg-white p-5 rounded-xl shadow border border-gray-100">
+            <div class="flex items-start justify-between">
+              <div>
+                <div class="text-xs text-gray-500">計畫編號</div>
+                <div class="text-sm font-semibold">${p.projectCode || '-'}</div>
+              </div>
+              <div class="text-xs px-2 py-1 rounded bg-blue-50 text-blue-700">${p.status||'進行中'}</div>
             </div>
-            <div class="mt-3 text-3xl font-extrabold text-gray-900">${value}</div>
-          </div>`;
-      }
+            <div class="mt-2 text-lg font-bold text-gray-900">${p.title || '(未命名專案)'}</div>
+            <div class="mt-1 text-sm text-gray-600">專案管理者：<b>${p.manager||'-'}</b></div>
+            <div class="text-sm text-gray-600">計畫主持人：<b>${p.pi||'-'}</b></div>
 
-      // 任務統計
-      const taskTotal = tasks.length;
-      const taskTodo = tasks.filter(t => (t.status||'Todo')==='Todo').length;
-      const taskWip  = tasks.filter(t => (t.status||'Todo')==='InProgress').length;
-      const taskDone = tasks.filter(t => (t.status||'Todo')==='Done').length;
-      const overdue  = tasks.filter(t => (t.dueDate && new Date(t.dueDate) < new Date() && (t.status||'')!=='Done')).length;
+            <div class="mt-3 text-xs text-gray-500">進度</div>
+            <div class="w-full bg-gray-200 rounded-full h-2">
+              <div class="h-2 rounded-full ${progress>=95?'bg-green-500':'bg-blue-700'}" style="width:${Math.max(0,Math.min(100,progress))}%"></div>
+            </div>
+            <div class="mt-2 text-xs text-gray-600">${progress}%</div>
+
+            <div class="grid grid-cols-3 gap-2 mt-3 text-sm">
+              <div class="bg-gray-50 rounded p-2">
+                <div class="text-xs text-gray-500">人事費</div>
+                <div class="font-semibold">${fmtMoney(personnel)}</div>
+              </div>
+              <div class="bg-gray-50 rounded p-2">
+                <div class="text-xs text-gray-500">設備費</div>
+                <div class="font-semibold">${fmtMoney(equipment)}</div>
+              </div>
+              <div class="bg-gray-50 rounded p-2">
+                <div class="text-xs text-gray-500">業務費</div>
+                <div class="font-semibold">${fmtMoney(operating)}</div>
+              </div>
+            </div>
+            <div class="mt-2 text-xs text-gray-500">總預算：<b>${fmtMoney(total)}</b></div>
+
+            <div class="mt-4 flex gap-2">
+              <button class="btn btn-primary" onclick="setView('details','${p.id}')"><i data-lucide='eye'></i>查看</button>
+              <button class="btn btn-gray" onclick="openProjectModal(${JSON.stringify({id:p.id}).replace(/"/g,'&quot;')})"><i data-lucide='edit-3'></i>快速編輯</button>
+            </div>
+          </div>
+        `;
+      }).join('');
 
       c.innerHTML=`
-        <h2 class="text-3xl font-bold text-gray-800 mb-6 border-b pb-2 flex items-center"><i data-lucide="layout-dashboard" class="w-7 h-7 mr-3 text-blue-800"></i>專案儀表板</h2>
-
-        <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-          ${sectionCard('專案總數', totalProjects, 'layers', 'border-blue-800')}
-          ${sectionCard('接近完成', completed, 'check-circle', 'border-green-600')}
-          ${sectionCard('總預算', fmtMoney(totalBudget), 'wallet', 'border-orange-600')}
-          ${sectionCard('逾期任務', overdue, 'alarm-clock', 'border-red-600')}
-        </div>
-
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-          <div class="project-card bg-white p-6 rounded-xl shadow-lg border-t-4 border-blue-800">
-            <div class="flex items-center justify-between mb-2"><div class="font-semibold text-gray-800">人事費總預算</div><div class="text-sm text-gray-500">${fmtMoney(pc)}</div></div>
-            <div class="w-full bg-gray-200 rounded-full h-3"><div class="progress-bar h-3 rounded-full ${barClass(pRate,pRemain)}" style="width:${(pRate*100).toFixed(0)}%"></div></div>
-            <div class="mt-2 text-sm text-gray-700 flex justify-between"><span>已用：<strong>${fmtMoney(personnelUsed)}</strong>（${(pRate*100).toFixed(0)}%）</span><span>${pRemain>=0?`餘額：<strong>${fmtMoney(pRemain)}</strong>`:`超支：<strong class="text-red-600">${fmtMoney(-pRemain)}</strong>`}</span></div>
-          </div>
-          <div class="project-card bg-white p-6 rounded-xl shadow-lg border-t-4 border-blue-800">
-            <div class="flex items-center justify-between mb-2"><div class="font-semibold text-gray-800">業務費總預算</div><div class="text-sm text-gray-500">${fmtMoney(oc)}</div></div>
-            <div class="w-full bg-gray-200 rounded-full h-3"><div class="progress-bar h-3 rounded-full ${barClass(oRate,oRemain)}" style="width:${(oRate*100).toFixed(0)}%"></div></div>
-            <div class="mt-2 text-sm text-gray-700 flex justify-between"><span>已用：<strong>${fmtMoney(operatingUsed)}</strong>（${(oRate*100).toFixed(0)}%）</span><span>${oRemain>=0?`餘額：<strong>${fmtMoney(oRemain)}</strong>`:`超支：<strong class="text-red-600">${fmtMoney(-oRemain)}</strong>`}</span></div>
-          </div>
-          <div class="project-card bg-white p-6 rounded-xl shadow-lg border-t-4 border-blue-800">
-            <div class="flex items-center justify-between mb-2"><div class="font-semibold text-gray-800">設備費總預算</div><div class="text-sm text-gray-500">${fmtMoney(ec)}</div></div>
-            <div class="w-full bg-gray-200 rounded-full h-3"><div class="progress-bar h-3 rounded-full ${barClass(eRate,eRemain)}" style="width:${(eRate*100).toFixed(0)}%"></div></div>
-            <div class="mt-2 text-sm text-gray-700 flex justify-between"><span>已用：<strong>${fmtMoney(equipmentUsed)}</strong>（${(eRate*100).toFixed(0)}%）</span><span>${eRemain>=0?`餘額：<strong>${fmtMoney(eRemain)}</strong>`:`超支：<strong class="text-red-600">${fmtMoney(-eRemain)}</strong>`}</span></div>
+        <div class="flex items-center justify-between mb-4">
+          <h2 class="text-3xl font-bold text-gray-800"><i data-lucide="layout-dashboard" class="w-7 h-7 mr-3 text-blue-800"></i>儀表板</h2>
+          <div class="flex gap-2">
+            <button class="btn btn-primary" onclick="openProjectModal()"><i data-lucide="plus"></i>新增專案</button>
           </div>
         </div>
 
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
           <div class="card">
-            <div class="font-semibold mb-3 flex items-center"><i data-lucide="clipboard-list" class="w-5 h-5 mr-2 text-blue-800"></i>任務狀態分佈</div>
-            <div class="text-sm text-gray-700">總任務：<b>${taskTotal}</b>，待辦：<b>${taskTodo}</b>，進行中：<b>${taskWip}</b>，已完成：<b>${taskDone}</b>，逾期：<b class="text-red-600">${overdue}</b></div>
-            <div class="mt-3"><button class="btn btn-primary" onclick="setView('tasks')"><i data-lucide="arrow-right"></i>前往任務</button></div>
+            <div class="text-sm text-gray-500">專案總數</div>
+            <div class="text-2xl font-extrabold">${totalProjects}</div>
           </div>
           <div class="card">
-            <div class="font-semibold mb-3 flex items-center"><i data-lucide="calendar" class="w-5 h-5 mr-2 text-blue-800"></i>近期事件</div>
-            <ul class="text-sm text-gray-700 space-y-1">
-              ${events.slice(0,8).map(e=>`<li>• ${e.title||'未命名'}（${tsToDateStr(e.startDate)}${e.endDate?` ~ ${tsToDateStr(e.endDate)}`:''}）</li>`).join('') || '<li class="text-gray-500">目前沒有事件</li>'}
-            </ul>
-            <div class="mt-3"><button class="btn btn-primary" onclick="setView('calendar')"><i data-lucide="arrow-right"></i>前往行事曆</button></div>
+            <div class="text-sm text-gray-500">接近完成</div>
+            <div class="text-2xl font-extrabold">${completed}</div>
+          </div>
+          <div class="card">
+            <div class="text-sm text-gray-500">總預算</div>
+            <div class="text-2xl font-extrabold">${fmtMoney(totalBudget)}</div>
           </div>
         </div>
 
-        <div class="bg-white p-6 rounded-xl shadow-lg">
-          ${ empty ? `
-            <div class="text-center py-8">
+        <div class="bg-white p-4 rounded-xl shadow mb-4">
+          <div class="text-gray-800 font-semibold mb-2 flex items-center"><i data-lucide="folder-kanban" class="w-5 h-5 mr-2 text-blue-800"></i>所有專案</div>
+          ${projects.length===0 ? `
+            <div class="text-center py-10">
               <i data-lucide="alert-triangle" class="w-10 h-10 text-yellow-500 mx-auto mb-3"></i>
               <p class="text-gray-700 mb-3">目前沒有專案資料。</p>
               <button onclick="seedDemoData()" class="px-4 py-2 bg-blue-800 text-white rounded-lg hover:bg-blue-700">
                 <i data-lucide="plus" class="w-5 h-5 inline mr-1"></i> 建立示範資料
               </button>
-            </div>` : `
-            <div class="text-gray-700">已載入 ${totalProjects} 個專案。從左側選單瀏覽任務、行事曆與詳情。</div>
+            </div>
+          ` : `
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">${cards}</div>
           `}
         </div>
       `;
@@ -807,12 +773,14 @@
       if(!isAuthorized()){ showModal("請先登入","請先登入後再建立示範資料。"); return; }
       try{
         const pRef = await addDoc(collection(db, PROJECTS_COLLECTION_PATH), {
+          projectCode: "TP-2025-001",
           title: "示範專案 A",
           manager: "蔡雅雯",
-          budget: 1000000,
+          pi: "王教授",
           personnelBudget: 400000,
-          operatingBudget: 300000,
           equipmentBudget: 300000,
+          operatingBudget: 300000,
+          budget: 1000000,
           progress: 10,
           status: "進行中",
           createdAt: serverTimestamp(),
@@ -836,7 +804,7 @@
           createdAt: serverTimestamp(),
           creatorId: currentUserId
         });
-        setBanner('success', "已建立示範資料，稍候數秒資料會出現在各模組。");
+        setBanner('success', "已建立示範資料。");
       }catch(err){
         handleDbError('seed', err);
       }
@@ -851,9 +819,9 @@
       return projects.map(p=>`<option value="${p.id}" ${p.id===selected?'selected':''}>${p.title||p.id}</option>`).join("");
     }
     function statusChip(s){
-      if(s==='Done') return '<span class="chip done">完成</span>';
-      if(s==='InProgress') return '<span class="chip wip">進行中</span>';
-      return '<span class="chip todo">待辦</span>';
+      if(s==='Done') return '<span class="chip" style="background:#ecfdf5;color:#065f46">完成</span>';
+      if(s==='InProgress') return '<span class="chip" style="background:#ecfeff;color:#155e75">進行中</span>';
+      return '<span class="chip" style="background:#eef2ff;color:#3730a3">待辦</span>';
     }
     function renderTaskManagement(){
       const c=document.getElementById("main-content"); if(!c) return;
@@ -1025,7 +993,6 @@
       }));
 
       if(calendarInstance && keepInstance){
-        // 更新現有日曆事件
         const api = calendarInstance.getApi();
         api.removeAllEvents();
         data.forEach(evt => api.addEvent(evt));
@@ -1126,22 +1093,22 @@
       const taskByStatus = ['Todo','InProgress','Done'].map(s=>({s, n: tasks.filter(t=> (t.status||'Todo')===s).length}));
       const overdueTasks = tasks.filter(t=> t.dueDate && new Date(t.dueDate)<new Date() && (t.status||'')!=='Done');
       const budgetByProject = projects.map(p=>{
-        const personnel = n(p.personnelUsed ?? p.personnelBudget);
-        const operating = n(p.operatingUsed ?? p.operatingBudget);
-        const equipment = n(p.equipmentUsed ?? p.equipmentBudget);
-        const used = personnel+operating+equipment;
-        return { id:p.id, title:p.title||p.id, budget:n(p.budget), used };
+        const personnel = n(p.personnelBudget);
+        const operating = n(p.operatingBudget);
+        const equipment = n(p.equipmentBudget);
+        const used = personnel+operating+equipment; // 若有 used 欄位可替換
+        return { id:p.id, title:p.title||p.id, budget:n(p.budget)||used, used };
       });
 
       function exportCSV(){
-        const rows=[['Project','Budget','Used'],
-          ...budgetByProject.map(x=>[x.title, x.budget, x.used])
+        const rows=[['ProjectCode','Project','Budget','Personnel','Equipment','Operating'],
+          ...projects.map(p=>[p.projectCode||'', p.title||'', n(p.budget)||n(p.personnelBudget)+n(p.equipmentBudget)+n(p.operatingBudget), n(p.personnelBudget), n(p.equipmentBudget), n(p.operatingBudget)])
         ];
         const csv=rows.map(r=>r.map(x=>`"${String(x).replaceAll('"','""')}"`).join(',')).join('\n');
         const blob=new Blob([csv],{type:'text/csv;charset=utf-8;'});
         const a=document.createElement('a');
         a.href=URL.createObjectURL(blob);
-        a.download='budget-report.csv';
+        a.download='project-budget.csv';
         document.body.appendChild(a); a.click(); a.remove();
       }
 
@@ -1162,19 +1129,21 @@
             </ul>
           </div>
           <div class="card">
-            <div class="font-semibold mb-3">專案預算使用</div>
+            <div class="font-semibold mb-3">專案預算</div>
             <table class="table text-sm">
-              <thead><tr><th>專案</th><th>預算</th><th>已用</th></tr></thead>
+              <thead><tr><th>編號</th><th>專案</th><th>總預算</th><th>人事</th><th>設備</th><th>業務</th></tr></thead>
               <tbody>
-                ${budgetByProject.map(b=>`<tr><td>${b.title}</td><td>${fmtMoney(b.budget)}</td><td>${fmtMoney(b.used)}</td></tr>`).join('') || '<tr><td colspan="3" class="text-gray-500">無資料</td></tr>'}
+                ${projects.map(p=>`<tr>
+                  <td>${p.projectCode||''}</td>
+                  <td>${p.title||''}</td>
+                  <td>${fmtMoney(n(p.budget)||n(p.personnelBudget)+n(p.equipmentBudget)+n(p.operatingBudget))}</td>
+                  <td>${fmtMoney(n(p.personnelBudget))}</td>
+                  <td>${fmtMoney(n(p.equipmentBudget))}</td>
+                  <td>${fmtMoney(n(p.operatingBudget))}</td>
+                </tr>`).join('') || '<tr><td colspan="6" class="text-gray-500">無資料</td></tr>'}
               </tbody>
             </table>
           </div>
-        </div>
-
-        <div class="card">
-          <div class="font-semibold mb-3">文字摘要</div>
-          <div class="text-sm text-gray-700" id="report-summary">- 專案數：${projects.length}；任務總數：${tasks.length}（逾期 ${overdueTasks.length}）</div>
         </div>
       `;
       document.getElementById('btn-export').onclick = exportCSV;
@@ -1203,7 +1172,7 @@
       listEl.innerHTML = list.map(p=>`
         <div class="card">
           <div class="flex justify-between">
-            <div class="font-semibold">${p.title||'(無標題)'} ${p.tag?`<span class="chip todo ml-2">#${p.tag}</span>`:''}</div>
+            <div class="font-semibold">${p.title||'(無標題)'} ${p.tag?`<span class="chip" style="background:#eef2ff;color:#3730a3">#${p.tag}</span>`:''}</div>
             ${(p.authorId===currentUserId)?`<button class="btn btn-danger" data-del="${p.id}"><i data-lucide="trash-2"></i>刪除</button>`:''}
           </div>
           <div class="text-sm text-gray-700 mt-1 whitespace-pre-wrap">${p.content||''}</div>
@@ -1238,7 +1207,7 @@
       if(window.lucide?.createIcons) try{ lucide.createIcons(); }catch{}
     }
 
-    // ============ 專案詳情 + 檔案 ============
+    // ============ 專案詳情 + 檔案（含新增專案表格） ============
     function renderProjectDetails(projectId){
       const c=document.getElementById("main-content"); if(!c) return;
 
@@ -1250,7 +1219,7 @@
           <h2 class="text-3xl font-bold text-gray-800 border-b pb-2 flex items-center"><i data-lucide="layout-dashboard" class="w-7 h-7 mr-3 text-blue-800"></i>專案詳情</h2>
           <div class="flex gap-2">
             <select id="pd-project" class="border rounded-lg px-3 py-2">
-              ${projects.map(p=>`<option value="${p.id}" ${p.id===projectId?'selected':''}>${p.title||p.id}</option>`).join('')}
+              ${projects.map(p=>`<option value="${p.id}" ${p.id===projectId?'selected':''}>${p.projectCode?`[${p.projectCode}] `:''}${p.title||p.id}</option>`).join('')}
             </select>
             <button class="btn btn-primary" id="btn-new-project"><i data-lucide="plus"></i>新增專案</button>
           </div>
@@ -1260,13 +1229,25 @@
         <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
           <div class="card md:col-span-2">
             <div class="font-semibold mb-2">基本資訊</div>
-            <div class="grid grid-cols-2 gap-3 text-sm">
-              <div>專案名稱：<b>${project.title||''}</b></div>
-              <div>專案經理：<b>${project.manager||''}</b></div>
-              <div>狀態：<b>${project.status||''}</b></div>
-              <div>進度：<b>${n(project.progress)||0}%</b></div>
-              <div>總預算：<b>${fmtMoney(project.budget||0)}</b></div>
-            </div>
+            <table class="table text-sm">
+              <tbody>
+                <tr><th style="width:150px">計畫編號</th><td>${project.projectCode||''}</td></tr>
+                <tr><th>專案名稱</th><td>${project.title||''}</td></tr>
+                <tr><th>專案管理者</th><td>${project.manager||''}</td></tr>
+                <tr><th>計畫主持人</th><td>${project.pi||''}</td></tr>
+                <tr><th>狀態/進度</th><td>${project.status||''} / ${n(project.progress)||0}%</td></tr>
+              </tbody>
+            </table>
+            <div class="mt-4 font-semibold">預算</div>
+            <table class="table text-sm">
+              <thead><tr><th>項目</th><th>金額</th></tr></thead>
+              <tbody>
+                <tr><td>人事費</td><td>${fmtMoney(n(project.personnelBudget))}</td></tr>
+                <tr><td>設備費</td><td>${fmtMoney(n(project.equipmentBudget))}</td></tr>
+                <tr><td>業務費</td><td>${fmtMoney(n(project.operatingBudget))}</td></tr>
+                <tr><td><b>合計</b></td><td><b>${fmtMoney(n(project.personnelBudget)+n(project.equipmentBudget)+n(project.operatingBudget))}</b></td></tr>
+              </tbody>
+            </table>
             <div class="mt-3">
               <button class="btn btn-gray" id="btn-edit-project"><i data-lucide="edit-3"></i>編輯</button>
               <button class="btn btn-danger" id="btn-del-project"><i data-lucide="trash-2"></i>刪除</button>
@@ -1277,7 +1258,7 @@
             <div class="font-semibold mb-2">檔案</div>
             <input id="file-input" type="file" class="block w-full text-sm" />
             <button class="btn btn-primary mt-2" id="btn-upload"><i data-lucide="upload"></i>上傳</button>
-            <div class="text-xs text-gray-500 mt-1">支援小型附件示範上傳。</div>
+            <div class="text-xs text-gray-500 mt-1">示範上傳附件。</div>
           </div>
 
           <div class="card md:col-span-3">
@@ -1316,7 +1297,6 @@
           if(!f) return;
           if(confirm(`確定刪除檔案 ${f.name}？`)){
             try{
-              // 刪雲檔
               if(f.storagePath){ await deleteObject(sRef(storage, f.storagePath)).catch(()=>{}); }
               await deleteDoc(doc(db, FILES_COLLECTION_PATH, id));
             }catch(err){ handleDbError('file-delete', err); }
@@ -1361,7 +1341,9 @@
       }
     }
 
-    function openProjectModal(project){
+    // 新增/編輯專案表格（含：計畫編號、名稱、專案管理者、計畫主持人、人事/設備/業務費）
+    function openProjectModal(projectRef){
+      const project = projectRef && projectRef.id ? projects.find(p=>p.id===projectRef.id) : null;
       const isEdit=!!project;
       const modal=document.createElement('div');
       modal.className='modal-backdrop';
@@ -1371,27 +1353,62 @@
             <div class="text-lg font-bold">${isEdit?'編輯專案':'新增專案'}</div>
             <button class="btn btn-gray" id="m-close">關閉</button>
           </div>
+
           <div class="space-y-3">
+            <table class="table text-sm">
+              <tbody>
+                <tr>
+                  <th style="width:140px">計畫編號</th>
+                  <td><input id="m-code" class="w-full border rounded-lg p-2" value="${project?.projectCode||''}" placeholder="例如 TP-2025-001"></td>
+                </tr>
+                <tr>
+                  <th>專案名稱</th>
+                  <td><input id="m-title" class="w-full border rounded-lg p-2" value="${project?.title||''}" placeholder="專案名稱"></td>
+                </tr>
+                <tr>
+                  <th>專案管理者</th>
+                  <td>
+                    <select id="m-manager" class="w-full border rounded-lg p-2">
+                      ${managerOptionsHtml(project?.manager||'')}
+                    </select>
+                  </td>
+                </tr>
+                <tr>
+                  <th>計畫主持人</th>
+                  <td><input id="m-pi" class="w-full border rounded-lg p-2" value="${project?.pi||''}" placeholder="主持人姓名"></td>
+                </tr>
+              </tbody>
+            </table>
+
+            <div class="font-semibold mt-2">預算（新台幣）</div>
+            <table class="table text-sm">
+              <thead><tr><th>人事費</th><th>設備費</th><th>業務費</th><th>合計</th></tr></thead>
+              <tbody>
+                <tr>
+                  <td><input id="m-b-person" type="number" min="0" class="w-full border rounded-lg p-2" value="${n(project?.personnelBudget)||0}"></td>
+                  <td><input id="m-b-equip" type="number" min="0" class="w-full border rounded-lg p-2" value="${n(project?.equipmentBudget)||0}"></td>
+                  <td><input id="m-b-oper" type="number" min="0" class="w-full border rounded-lg p-2" value="${n(project?.operatingBudget)||0}"></td>
+                  <td><input id="m-b-total" type="number" min="0" class="w-full border rounded-lg p-2" value="${n(project?.budget)||n(project?.personnelBudget)+n(project?.equipmentBudget)+n(project?.operatingBudget)||0}" disabled></td>
+                </tr>
+              </tbody>
+            </table>
+
             <div class="form-row">
-              <div><label class="text-sm text-gray-600">專案名稱</label><input id="m-title" class="w-full border rounded-lg p-2" value="${project?.title||''}"></div>
-              <div><label class="text-sm text-gray-600">專案經理</label>
-                <select id="m-manager" class="w-full border rounded-lg p-2">${managerOptionsHtml(project?.manager||'')}</select>
-              </div>
-            </div>
-            <div class="form-row">
-              <div><label class="text-sm text-gray-600">總預算</label><input id="m-budget" type="number" class="w-full border rounded-lg p-2" value="${project?.budget||0}"></div>
-              <div><label class="text-sm text-gray-600">進度 %</label><input id="m-progress" type="number" min="0" max="100" class="w-full border rounded-lg p-2" value="${project?.progress||0}"></div>
-            </div>
-            <div class="form-row">
-              <div><label class="text-sm text-gray-600">狀態</label>
+              <div>
+                <label class="text-sm text-gray-600">狀態</label>
                 <select id="m-status" class="w-full border rounded-lg p-2">
                   ${['進行中','規劃中','已結案','延後'].map(s=>`<option ${project?.status===s?'selected':''}>${s}</option>`).join('')}
                 </select>
               </div>
-              <div></div>
+              <div>
+                <label class="text-sm text-gray-600">進度 %</label>
+                <input id="m-progress" type="number" min="0" max="100" class="w-full border rounded-lg p-2" value="${project?.progress??0}">
+              </div>
             </div>
+
             <div class="flex justify-end gap-2">
               <button class="btn btn-gray" id="m-close2">取消</button>
+              ${isEdit?'<button class="btn btn-danger" id="m-del"><i data-lucide="trash-2"></i>刪除</button>':''}
               <button class="btn btn-primary" id="m-save">儲存</button>
             </div>
           </div>
@@ -1400,28 +1417,62 @@
       const close=()=>{ try{ document.body.removeChild(modal); }catch{} };
       modal.querySelector('#m-close').onclick=close;
       modal.querySelector('#m-close2').onclick=close;
+
+      const bPerson=modal.querySelector('#m-b-person');
+      const bEquip =modal.querySelector('#m-b-equip');
+      const bOper  =modal.querySelector('#m-b-oper');
+      const bTotal =modal.querySelector('#m-b-total');
+      const recalc=()=>{ bTotal.value = (Number(bPerson.value||0)+Number(bEquip.value||0)+Number(bOper.value||0)); };
+      [bPerson,bEquip,bOper].forEach(i=> i.addEventListener('input', recalc));
+
+      if(isEdit){
+        const delBtn = modal.querySelector('#m-del');
+        delBtn.onclick = async ()=>{
+          if(confirm('確定刪除此專案？（不會連動刪除任務/檔案）')){
+            try{ await deleteDoc(doc(db, PROJECTS_COLLECTION_PATH, project.id)); close(); setView('dashboard'); }
+            catch(err){ handleDbError('project-delete',err); }
+          }
+        };
+      }
+
       modal.querySelector('#m-save').onclick = async ()=>{
+        const projectCode=modal.querySelector('#m-code').value.trim();
         const title=modal.querySelector('#m-title').value.trim();
         const manager=modal.querySelector('#m-manager').value;
-        const budget=Number(modal.querySelector('#m-budget').value)||0;
-        const progress=Math.max(0,Math.min(100,Number(modal.querySelector('#m-progress').value)||0));
+        const pi     =modal.querySelector('#m-pi').value.trim();
+        const personnelBudget=Number(bPerson.value||0);
+        const equipmentBudget=Number(bEquip.value||0);
+        const operatingBudget=Number(bOper.value||0);
+        const budget=Number(bTotal.value||0);
         const status=modal.querySelector('#m-status').value;
+        const progress=Math.max(0,Math.min(100,Number(modal.querySelector('#m-progress').value)||0));
+
         if(!title){ alert('請輸入專案名稱'); return; }
         try{
           if(isEdit){
-            await updateDoc(doc(db, PROJECTS_COLLECTION_PATH, project.id), { title, manager, budget, progress, status, updatedAt: serverTimestamp() });
+            await updateDoc(doc(db, PROJECTS_COLLECTION_PATH, project.id), {
+              projectCode, title, manager, pi,
+              personnelBudget, equipmentBudget, operatingBudget, budget,
+              status, progress, updatedAt: serverTimestamp()
+            });
             selectedProjectId = project.id;
           }else{
-            const ref = await addDoc(collection(db, PROJECTS_COLLECTION_PATH), { title, manager, budget, progress, status, createdAt: serverTimestamp(), reporterId: currentUserId });
+            const ref = await addDoc(collection(db, PROJECTS_COLLECTION_PATH), {
+              projectCode, title, manager, pi,
+              personnelBudget, equipmentBudget, operatingBudget, budget,
+              status, progress, createdAt: serverTimestamp(), reporterId: currentUserId
+            });
             selectedProjectId = ref.id;
           }
           close();
-          renderProjectDetails(selectedProjectId);
+          setView('details', selectedProjectId);
         }catch(err){ handleDbError('project-save',err); }
       };
+
+      if(window.lucide?.createIcons) try{ lucide.createIcons(); }catch{}
     }
 
-    // ============ 啟動 ============
+    // 啟動
     window.addEventListener('DOMContentLoaded', () => {
       initFirebase().catch(e=>{
         logDbg('ERR','initFirebase failed', {code:e?.code, message:e?.message});

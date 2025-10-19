@@ -86,8 +86,13 @@
     #debug pre{margin:0;padding:8px 10px;max-height:40vh;overflow:auto;white-space:pre-wrap}
     #debug .pill{background:#374151;color:#9ca3af;border-radius:20px;padding:2px 8px;margin-left:6px;font-size:11px}
     #debug .ok{color:#10b981} #debug .warn{color:#f59e0b} #debug .err{color:#ef4444}
-    .link{color:#2563eb;cursor:pointer}
-    .link:hover{text-decoration:underline}
+
+    /* In-App Browser 阻擋提示 Overlay */
+    #inapp-overlay{position:fixed;inset:0;z-index:60;background:rgba(17,24,39,.85);color:#e5e7eb;display:none}
+    #inapp-card{max-width:30rem;margin:10vh auto;background:#111827;border:1px solid #374151;border-radius:14px;padding:18px}
+    .action-btn{display:inline-flex;align-items:center;gap:.4rem;border-radius:10px;padding:.5rem .8rem}
+    .btn-blue{background:#2563eb;color:#fff}
+    .btn-gray{background:#374151;color:#e5e7eb}
   </style>
 </head>
 <body class="bg-gray-50 font-sans min-h-screen">
@@ -113,8 +118,8 @@
         <div class="flex items-center justify-between mt-3 text-xs text-gray-600">
           <div id="landing-loading" class="hidden">登入狀態還原中，請稍候…</div>
           <div class="space-x-3">
-            <button id="btn-auth-reset" class="hidden link" onclick="clearAuthStuck()">清除登入狀態</button>
-            <button id="btn-open-window" class="hidden link" onclick="openInNewWindow()">在新視窗開啟</button>
+            <button id="btn-auth-reset" class="hidden text-blue-600 underline" onclick="clearAuthStuck()">清除登入狀態</button>
+            <button id="btn-open-window" class="hidden text-blue-600 underline" onclick="openInNewWindow()">在新視窗開啟</button>
           </div>
         </div>
       </div>
@@ -122,6 +127,26 @@
       <p class="text-xs text-gray-400 text-center mt-6">本網站使用 Firebase Auth；登入後方能讀取/寫入資料。</p>
     </div>
   </section>
+
+  <!-- In-App Browser Overlay -->
+  <div id="inapp-overlay" aria-hidden="true">
+    <div id="inapp-card">
+      <div class="text-lg font-bold mb-1">請在外部瀏覽器開啟以登入</div>
+      <div class="text-sm text-gray-300">
+        偵測到目前是在 App 內建瀏覽器中（LINE/FB/IG 等），Google 登入會被封鎖（403: disallowed_useragent）。<br/>
+        請按照下列任一方式操作後再登入：
+      </div>
+      <ul class="text-sm text-gray-200 list-disc pl-6 mt-3 space-y-1">
+        <li>點右上角或分享選單，選「在瀏覽器中開啟」（iOS: Safari；Android: Chrome）。</li>
+        <li>或點下方「在新視窗開啟」；若仍在 App 內，請手動複製網址到外部瀏覽器。</li>
+      </ul>
+      <div class="mt-4 flex gap-2">
+        <button class="action-btn btn-blue" onclick="openInNewWindow()"><i data-lucide='external-link' class='w-4 h-4'></i>在新視窗開啟</button>
+        <button class="action-btn btn-gray" onclick="copyUrl()"><i data-lucide='clipboard' class='w-4 h-4'></i>複製本站網址</button>
+      </div>
+      <div class="text-xs text-gray-400 mt-3">若已在外部瀏覽器開啟，請關閉此頁面後直接使用外部瀏覽器再次開啟本網址。</div>
+    </div>
+  </div>
 
   <!-- 應用殼（登入後顯示） -->
   <div id="app-shell" class="hidden">
@@ -198,7 +223,6 @@
 
     setLogLevel('error');
 
-    // Debug
     const debugMode = /[?&]debug=1/.test(location.search);
     const dbgEl = document.getElementById('debug');
     const dbgLogEl = document.getElementById('dbg-log');
@@ -212,19 +236,16 @@
     }
     function setDbgState(s, cls){ if(!debugMode) return; dbgStateEl.textContent = s; dbgStateEl.className = 'pill ' + (cls||''); }
 
-    // 全域狀態
     let db, auth, storage;
     let currentUserId = "";
     let listenersStarted = false;
     let userProfile = { displayName:"", email:"", photoURL:"" };
 
-    // 設定
     const APP_ID = window.__app_id || "default-app-id";
     const firebaseConfig = window.__firebase_config_object || null;
     const SHAREPOINT_FLOW_URL   = window.__sharepoint_flow_url || "";
     const AI_SUMMARY_WEBAPP_URL = window.__ai_summary_webapp_url || "";
 
-    // Firestore 路徑
     const PROJECTS_COLLECTION_PATH = `artifacts/${APP_ID}/public/data/project_metadata`;
     const TASKS_COLLECTION_PATH    = `artifacts/${APP_ID}/public/data/project_tasks`;
     const EVENTS_COLLECTION_PATH   = `artifacts/${APP_ID}/public/data/calendar_events`;
@@ -233,39 +254,44 @@
     const MANAGERS_COLLECTION_PATH = `artifacts/${APP_ID}/public/settings/project_managers`;
     const COMMUNITY_COLLECTION_PATH= `artifacts/${APP_ID}/public/community/posts`;
 
-    // DOM
     const landing = document.getElementById("landing");
     const landingLoading=document.getElementById("landing-loading");
     const appShell = document.getElementById("app-shell");
     const loginBtn = document.getElementById('btn-landing-login');
     const resetBtn = document.getElementById('btn-auth-reset');
     const openWindowBtn = document.getElementById('btn-open-window');
+    const inAppOverlay = document.getElementById('inapp-overlay');
 
-    // Utils
     function showModal(title, message){ alert((title||"提示") + (message?("\n\n" + message):"")); }
     function n(v){ return Number(v)||0; }
     function clamp01(x){ return Math.max(0, Math.min(1, x)); }
     function fmtMoney(x){ return `$${(Number(x)||0).toLocaleString()}`; }
     function escapeHtml(str){ if(str==null) return ""; return String(str).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#039;"); }
+
+    function isLikelyInAppBrowser(){
+      const ua = navigator.userAgent || '';
+      // 常見 App WebView UA 標記
+      return /(FBAN|FBAV|Instagram|Line\/| Line;|MicroMessenger|WeChat|Twitter|TikTok|MiuiBrowser|wv;|; wv\)|OPR\/|DuckDuckGo)/i.test(ua);
+    }
     function canUseSessionStorage(){
       try{ const k='__ss__'+Math.random(); sessionStorage.setItem(k,'1'); const ok=sessionStorage.getItem(k)==='1'; sessionStorage.removeItem(k); return ok; }
       catch{ return false; }
     }
-    function isLikelyInAppBrowser(){
-      const ua = navigator.userAgent || '';
-      return /(FBAN|FBAV|Instagram|Line|Line\/|Messenger|WeChat|MicroMessenger|Twitter|TikTok|MiuiBrowser|OPR\/|DuckDuckGo)/i.test(ua);
-    }
     function openInNewWindow(){ try{ window.open(location.href,'_blank','noopener,noreferrer'); }catch{} }
     window.openInNewWindow = openInNewWindow;
+    async function copyUrl(){
+      const url = location.href.split('#')[0];
+      try{ await navigator.clipboard.writeText(url); showModal('已複製網址', url); }
+      catch{ showModal('請手動複製網址', url); }
+    }
+    window.copyUrl = copyUrl;
 
-    // 顯示/隱藏 App
     function showAppShell(show){
       if(show){ landing.classList.add("hidden"); appShell.classList.remove("hidden"); }
       else{ appShell.classList.add("hidden"); landing.classList.remove("hidden"); }
       if(window.lucide?.createIcons) try{ lucide.createIcons(); }catch{}
     }
 
-    // 使用者 UI
     function updateUserChips(){
       const nameEl = document.getElementById("user-display-name");
       const emailEl= document.getElementById("user-email");
@@ -307,19 +333,27 @@
       try{ await signOut(auth); }catch{}
       try{ [localStorage, sessionStorage].forEach(store=>{ try{ for(const k of Object.keys(store)){ if(/^firebase:/.test(k) || /firebase/i.test(k)) store.removeItem(k); } }catch{} }); }catch{}
       logDbg('WARN','auth cache cleared');
-      alert('已清除登入快取，請重新登入。若你在 App 內建瀏覽器，請改用外部瀏覽器開啟本頁。');
+      alert('已清除登入快取，請在外部瀏覽器重新登入。');
     }
     window.clearAuthStuck = clearAuthStuck;
 
-    // 登入流程：Popup優先；若被擋且 sessionStorage 可用，回退 Redirect；否則提示外部瀏覽器
+    // 登入流程：Popup 優先；若 popup 被擋且 sessionStorage 可用，回退 Redirect；否則提示外部瀏覽器
     window.signInWithGoogle = async function(){
+      // 若偵測到在 App 內建瀏覽器，直接提示改用外部瀏覽器，避免 403: disallowed_useragent
+      if(isLikelyInAppBrowser()){
+        inAppOverlay.style.display = 'block';
+        openWindowBtn?.classList.remove('hidden');
+        resetBtn?.classList.remove('hidden');
+        showModal("請在外部瀏覽器開啟", "目前處於 App 內建瀏覽器，Google 登入會被封鎖（403: disallowed_useragent）。請改用 Safari / Chrome 開啟本頁再登入。");
+        return;
+      }
+
       try{
         if(!auth){ await initFirebase().catch(()=>{}); }
         if(!auth){ showModal("初始化中","驗證服務尚未就緒，請稍候再試或重新整理。"); return; }
         const provider = new GoogleAuthProvider();
         provider.setCustomParameters({ prompt: 'select_account' });
 
-        // 先試 Popup
         try{
           setDbgState('popup','warn'); logDbg('INFO','signInWithPopup try',{ua:navigator.userAgent});
           await signInWithPopup(auth, provider);
@@ -328,14 +362,11 @@
         }catch(e){
           const code = e?.code || "";
           logDbg('WARN','signInWithPopup failed', {code, message:e?.message});
-          // 若 popup 被擋或被關，嘗試 redirect（但僅在 sessionStorage 可用時）
           const ssOK = canUseSessionStorage();
           if(ssOK){
             setDbgState('redirecting','warn'); logDbg('INFO','fallback to signInWithRedirect');
             await signInWithRedirect(auth, provider);
-            return;
           }else{
-            // 無法 redirect（會 missing initial state），提示外部瀏覽器
             openWindowBtn?.classList.remove('hidden');
             resetBtn?.classList.remove('hidden');
             showModal("瀏覽器封鎖了登入視窗",
@@ -390,7 +421,7 @@
       landingLoading?.classList.remove("hidden");
       resetBtn?.classList.add('hidden');
       openWindowBtn?.classList.toggle('hidden', !isLikelyInAppBrowser());
-      setDbgState('restoring','warn'); logDbg('INFO','init: restoring...', {ua:navigator.userAgent, ssOK: canUseSessionStorage()});
+      setDbgState('restoring','warn'); logDbg('INFO','init: restoring...', {ua:navigator.userAgent, ssOK: canUseSessionStorage(), inApp:isLikelyInAppBrowser()});
 
       let settled=false;
       const safetyTimer=setTimeout(()=>{
@@ -403,7 +434,6 @@
         }
       },7000);
 
-      // 先掛監聽
       onAuthStateChanged(auth, (user)=>{
         settled=true; clearTimeout(safetyTimer);
         landingLoading?.classList.add("hidden");
@@ -412,10 +442,9 @@
         loginBtn?.removeAttribute('disabled');
       });
 
-      // 選擇持久化
       try{ await choosePersistence(auth); }catch(e){ logDbg('ERR','choosePersistence error', {code:e?.code, message:e?.message}); }
 
-      // 若剛才 fallback 走了 redirect，這裡會拿到結果
+      // 若之前已回退 redirect，這裡會拿到結果
       try{
         const rr = await getRedirectResult(auth);
         if(rr?.user){
@@ -430,11 +459,17 @@
       }catch(e){
         logDbg('ERR','getRedirectResult error', {code:e?.code, message:e?.message});
       }
+
+      // 若處於 App 內建瀏覽器，顯示提示 Overlay，並停用登入按鈕
+      if(isLikelyInAppBrowser()){
+        inAppOverlay.style.display = 'block';
+        loginBtn?.setAttribute('disabled','true');
+      }
     }
 
     function isAuthorized(){ return !!currentUserId; }
 
-    // ====== 以下為資料/視圖（維持與先前版本一致，略寫重點面板） ======
+    // ====== 視圖（儀表板簡版，同之前） ======
     let managers=[]; const DEFAULT_MANAGERS=["蔡雅雯","陳乃菁","吳曉琪","蘇琬淳","楊穎潔","王小明","李小華","張曉安"];
     let currentView="dashboard",selectedProjectId=null,calendarInstance=null;
     let projects=[],tasks=[],events=[],files=[],communityPosts=[],budgetCaps={personnelCap:0,operatingCap:0,equipmentCap:0};
@@ -453,7 +488,7 @@
       else if(view==="details"){ selectedProjectId=(typeof arg==="string"&&arg)?arg:(projects[0]?.id||null); renderProjectDetails(selectedProjectId); }
     };
     function rerenderByView(){ if(currentView==="dashboard") renderDashboard(); if(currentView==="tasks") renderTaskManagement(); if(currentView==="calendar") renderCalendar(); if(currentView==="report") renderReport(); if(currentView==="community") renderCommunity(); if(currentView==="details") renderProjectDetails(selectedProjectId); }
-    function managerOptionsHtml(selected=""){ const list=(managers.length>0?managers.map(m=>m.name).filter(Boolean):DEFAULT_MANAGERS); return list.map(m=>`<option value="${escapeHtml(m)}" ${m===selected?'selected':''}>${escapeHtml(m)}</option>`).join(""); }
+
     function initializeSystem(withData){
       currentView="dashboard"; renderDashboard(true);
       if(withData) startRealtimeListeners();
@@ -462,17 +497,35 @@
     }
     function startRealtimeListeners(){
       if(!db || listenersStarted) return; listenersStarted=true;
-      onSnapshot(query(collection(db, PROJECTS_COLLECTION_PATH), orderBy("createdAt","desc")), s=>{ projects=s.docs.map(d=>({id:d.id,...d.data()})); rerenderByView(); });
-      onSnapshot(query(collection(db, TASKS_COLLECTION_PATH), orderBy("createdAt","desc")), s=>{ tasks=s.docs.map(d=>({id:d.id,...d.data()})); rerenderByView(); });
-      onSnapshot(query(collection(db, EVENTS_COLLECTION_PATH), orderBy("startDate","asc")), s=>{ events=s.docs.map(d=>({id:d.id,...d.data()})); if(currentView==="calendar") renderCalendar(); });
-      onSnapshot(query(collection(db, FILES_COLLECTION_PATH), orderBy("uploadedAt","desc")), s=>{ files=s.docs.map(d=>({id:d.id,...d.data()})); if(currentView==="details") renderProjectDetails(selectedProjectId); });
-      onSnapshot(doc(db, SETTINGS_DOC_PATH), snap=>{ if(snap.exists()){ const d=snap.data()||{}; budgetCaps={ personnelCap:n(d.personnelCap), operatingCap:n(d.operatingCap), equipmentCap:n(d.equipmentCap) }; }else{ budgetCaps={ personnelCap:0, operatingCap:0, equipmentCap:0 }; } if(currentView==="dashboard") renderDashboard(); });
-      onSnapshot(query(collection(db, MANAGERS_COLLECTION_PATH), orderBy("name","asc")), s=>{ managers=s.docs.map(d=>({id:d.id,...d.data()})); rerenderByView(); });
-      onSnapshot(query(collection(db, COMMUNITY_COLLECTION_PATH), orderBy("createdAt","desc")), s=>{ communityPosts=s.docs.map(d=>({id:d.id,...d.data()})); if(currentView==="community") renderCommunity(); });
+      onSnapshot(query(collection(db, PROJECTS_COLLECTION_PATH), orderBy("createdAt","desc")), s=>{
+        projects=s.docs.map(d=>({id:d.id,...d.data()})); rerenderByView();
+      });
+      onSnapshot(query(collection(db, TASKS_COLLECTION_PATH), orderBy("createdAt","desc")), s=>{
+        tasks=s.docs.map(d=>({id:d.id,...d.data()})); rerenderByView();
+      });
+      onSnapshot(query(collection(db, EVENTS_COLLECTION_PATH), orderBy("startDate","asc")), s=>{
+        events=s.docs.map(d=>({id:d.id,...d.data()})); if(currentView==="calendar") renderCalendar();
+      });
+      onSnapshot(query(collection(db, FILES_COLLECTION_PATH), orderBy("uploadedAt","desc")), s=>{
+        files=s.docs.map(d=>({id:d.id,...d.data()})); if(currentView==="details") renderProjectDetails(selectedProjectId);
+      });
+      onSnapshot(doc(db, SETTINGS_DOC_PATH), snap=>{
+        if(snap.exists()){
+          const d=snap.data()||{}; budgetCaps={ personnelCap:n(d.personnelCap), operatingCap:n(d.operatingCap), equipmentCap:n(d.equipmentCap) };
+        }else{ budgetCaps={ personnelCap:0, operatingCap:0, equipmentCap:0 }; }
+        if(currentView==="dashboard") renderDashboard();
+      });
+      onSnapshot(query(collection(db, MANAGERS_COLLECTION_PATH), orderBy("name","asc")), s=>{
+        managers=s.docs.map(d=>({id:d.id,...d.data()})); rerenderByView();
+      });
+      onSnapshot(query(collection(db, COMMUNITY_COLLECTION_PATH), orderBy("createdAt","desc")), s=>{
+        communityPosts=s.docs.map(d=>({id:d.id,...d.data()})); if(currentView==="community") renderCommunity();
+      });
     }
 
     function renderDashboard(isBoot=false){
       const c=document.getElementById("main-content"); if(!c) return;
+
       const totalProjects=projects.length;
       const completed=projects.filter(p=>(n(p.progress))>=95).length;
       const totalBudget=projects.reduce((s,p)=>s+n(p.budget),0);
@@ -498,15 +551,24 @@
 
         <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
           <div class="project-card bg-white p-6 rounded-xl shadow-lg border-t-4 border-blue-800">
-            <div class="flex items-center justify-between"><div class="text-gray-500">專案總數</div><i data-lucide="layers" class="w-8 h-8 text-blue-800"></i></div>
+            <div class="flex items-center justify-between">
+              <div class="text-gray-500">專案總數</div>
+              <i data-lucide="layers" class="w-8 h-8 text-blue-800"></i>
+            </div>
             <div class="mt-3 text-3xl font-extrabold text-gray-900">${totalProjects}</div>
           </div>
           <div class="project-card bg-white p-6 rounded-xl shadow-lg border-t-4 border-green-600">
-            <div class="flex items-center justify-between"><div class="text-gray-500">接近完成</div><i data-lucide="check-circle" class="w-8 h-8 text-green-600"></i></div>
+            <div class="flex items-center justify-between">
+              <div class="text-gray-500">接近完成</div>
+              <i data-lucide="check-circle" class="w-8 h-8 text-green-600"></i>
+            </div>
             <div class="mt-3 text-3xl font-extrabold text-gray-900">${completed}</div>
           </div>
           <div class="project-card bg-white p-6 rounded-xl shadow-lg border-t-4 border-orange-600">
-            <div class="flex items-center justify-between"><div class="text-gray-500">總預算</div><i data-lucide="wallet" class="w-8 h-8 text-orange-600"></i></div>
+            <div class="flex items中心 justify-between">
+              <div class="text-gray-500">總預算</div>
+              <i data-lucide="wallet" class="w-8 h-8 text-orange-600"></i>
+            </div>
             <div class="mt-3 text-3xl font-extrabold text-gray-900">${fmtMoney(totalBudget)}</div>
           </div>
         </div>
@@ -545,7 +607,7 @@
       if(window.lucide?.createIcons) try{ lucide.createIcons(); }catch{}
     }
 
-    // 其他畫面（任務/行事曆/報告/社群）可保留你先前的實作；如需我可再貼完整段落。
+    // 省略 tasks/calendar/report/community 的完整實作（與你先前版本一致）
 
     window.addEventListener('DOMContentLoaded', () => {
       initFirebase().catch(e=>{

@@ -5,7 +5,6 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>深耕計畫專案管理儀表板</title>
 
-  <!-- 開發用 CSP（正式建議以伺服器 Header 設定） -->
   <meta http-equiv="Content-Security-Policy"
         content="default-src 'self';
                  script-src 'self' 'unsafe-inline' https://www.gstatic.com https://cdn.tailwindcss.com https://unpkg.com https://cdn.jsdelivr.net https://www.google.com;
@@ -30,15 +29,12 @@
                  object-src 'none';
                  base-uri 'self';">
 
-  <!-- Tailwind / Icons / FullCalendar -->
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://unpkg.com/lucide@0.469.0/dist/umd/lucide.js"></script>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/main.min.css">
   <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/index.global.min.js"></script>
 
-  <!-- 設定區 -->
   <script>
-    // Firebase 組態
     window.__firebase_config_object = {
       apiKey: "AIzaSyCIXWS0ynK4GdsdQIXkOs3fHuzAendZ7LA",
       authDomain: "taiwanplan-f7566.firebaseapp.com",
@@ -47,16 +43,9 @@
       messagingSenderId: "874700126533",
       appId: "1:874700126533:web:5461432d0169b7de6ee62c"
     };
-    // Firestore APP ID（路徑用）
     window.__app_id = "taiwanplan-f7566";
-
-    // 登入模式（google | anonymous），此版預設 google
     window.__auth_mode = "google";
-
-    // SharePoint（Power Automate HTTP 觸發 URL）— 請替換為你的 Flow URL
     window.__sharepoint_flow_url = "REPLACE_WITH_YOUR_POWER_AUTOMATE_HTTP_TRIGGER_URL";
-
-    // AI 彙整（Google Apps Script Web App URL）
     window.__ai_summary_webapp_url = "https://script.google.com/macros/s/AKfycbzBaT08WiuMIpqVNrG70iTVMUFXY1X-1zSn0uKa3xgLa4KdUwFbL5q7xh5OwpJMAblAdQ/exec";
   </script>
 
@@ -64,8 +53,8 @@
     tailwind.config = {
       theme: {
         extend: {
-          fontFamily: { sans: ["Inter", "Noto Sans TC", "sans-serif"] },
-          colors: { "primary-blue":"#1e40af", "secondary-green":"#059669", "accent-orange":"#ea580c" }
+          fontFamily: { sans: ["Inter","Noto Sans TC","sans-serif"] },
+          colors: { "primary-blue":"#1e40af","secondary-green":"#059669","accent-orange":"#ea580c" }
         }
       }
     }
@@ -75,93 +64,99 @@
     .project-card{box-shadow:0 4px 6px -1px rgba(0,0,0,.1),0 2px 4px -1px rgba(0,0,0,.06);transition:transform .2s}
     .project-card:hover{transform:translateY(-2px)}
     .progress-bar{transition:width .5s ease-in-out}
-
-    /* 側欄樣式：支援展開/收合 */
-    #app-sidebar { overflow: hidden; }
-    #app-sidebar.expanded { width: 240px !important; }
-    #app-sidebar.collapsed { width: 72px !important; }
-
-    #app-sidebar .nav-item{
-      display:flex; align-items:center; gap:.75rem;
-      width:100%; padding:.5rem .5rem; border-radius:.75rem;
-      color:#e5e7eb; transition: background-color .15s, color .15s;
-    }
-    #app-sidebar .nav-item:hover{ background-color: rgba(255,255,255,.08); color:#fff; }
-    #app-sidebar .nav-item.active{ background-color: rgba(59,130,246,.18); color:#fff; }
-    #app-sidebar .nav-icon{ width:22px; height:22px; stroke-width:2.2; }
-    #app-sidebar svg{ stroke: currentColor; }
-
-    #app-sidebar .nav-label{ display:inline; white-space:nowrap; font-weight:600; font-size:.875rem; }
-    #app-sidebar.collapsed .nav-label{ display:none; }
-
-    #app-main{ transition: margin-left .2s ease; }
+    #app-sidebar{overflow:hidden}
+    #app-sidebar.expanded{width:240px!important}
+    #app-sidebar.collapsed{width:72px!important}
+    #app-sidebar .nav-item{display:flex;align-items:center;gap:.75rem;width:100%;padding:.5rem .5rem;border-radius:.75rem;color:#e5e7eb;transition:background-color .15s,color .15s}
+    #app-sidebar .nav-item:hover{background-color:rgba(255,255,255,.08);color:#fff}
+    #app-sidebar .nav-item.active{background-color:rgba(59,130,246,.18);color:#fff}
+    #app-sidebar .nav-label{display:inline;white-space:nowrap;font-weight:600;font-size:.875rem}
+    #app-sidebar.collapsed .nav-label{display:none}
+    #app-main{transition:margin-left .2s ease}
+    .landing-bg{background:radial-gradient(1200px 600px at 85% 85%,#7c3aed30,transparent 60%),radial-gradient(1000px 500px at 0% 100%,#ec489930,transparent 55%),linear-gradient(180deg,#ffffff 0%,#f7f7fb 100%)}
   </style>
 </head>
-<body class="bg-gray-50 font-sans flex min-h-screen">
-
-  <!-- 側欄（預設展開有文字，可按漢堡鍵收合為只顯示圖示） -->
-  <aside id="app-sidebar" class="fixed inset-y-2 left-2 z-10 rounded-2xl bg-black text-white shadow-2xl flex flex-col justify-between py-3 transition-all duration-200 expanded" style="width:240px;">
-    <!-- 上：Logo + 漢堡切換 + 導覽 -->
-    <div class="w-full">
-      <div class="flex items-center justify-between px-3 mb-2">
-        <button class="w-10 h-10 rounded-xl bg-gradient-to-br from-pink-500 via-purple-500 to-indigo-500 shadow-md" title="Home" onclick="setView('dashboard')"></button>
-        <button id="btn-toggle" class="p-2 rounded-lg hover:bg-white/10" title="收合/展開" onclick="toggleSidebar()">
-          <i data-lucide="panel-left-close" class="nav-icon"></i>
-        </button>
+  <section id="landing" class="landing-bg min-h-screen flex items-center justify-center px-4">
+    <div class="max-w-md w-full">
+      <div class="text-center mb-6">
+        <div class="inline-flex items-center gap-2 text-2xl font-extrabold text-primary-blue">
+          <i data-lucide="sparkles" class="w-6 h-6"></i> 深耕計畫 PM
+        </div>
       </div>
-      <nav class="w-full flex flex-col items-stretch space-y-1 px-1">
-        <button class="nav-item group" data-view="dashboard" title="Home" onclick="setView('dashboard')">
-          <i data-lucide="house" class="nav-icon"></i><span class="nav-label">Home</span>
+      <div class="bg-white/90 backdrop-blur rounded-2xl shadow-2xl p-8">
+        <h1 class="text-3xl font-extrabold text-gray-900 text-center">Welcome back! 歡迎回來！</h1>
+        <p class="text-sm text-gray-500 text-center mt-2">使用 Google 帳號登入以進入儀表板</p>
+        <div id="landing-user" class="hidden mt-6">
+          <div class="flex items-center gap-3 p-3 rounded-xl bg-gray-50 border">
+            <div class="w-10 h-10 rounded-full bg-gray-200 overflow-hidden">
+              <img id="landing-avatar" alt="" class="w-full h-full object-cover hidden">
+              <div id="landing-initial" class="w-full h-full flex items-center justify-center text-black/70 font-bold">U</div>
+            </div>
+            <div class="min-w-0">
+              <div id="landing-name" class="font-semibold truncate"></div>
+              <div id="landing-email" class="text-xs text-gray-500 truncate"></div>
+            </div>
+          </div>
+        </div>
+        <button id="btn-landing-login" onclick="signInWithGoogle()" class="mt-6 w-full py-3 rounded-xl bg-primary-blue hover:bg-blue-700 text-white font-semibold flex items-center justify-center gap-2">
+          <img alt="" src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" class="w-5 h-5"/> 使用 Google 登入
         </button>
-        <button class="nav-item group" data-view="tasks" title="Planner" onclick="setView('tasks')">
-          <i data-lucide="calendar-days" class="nav-icon"></i><span class="nav-label">Planner</span>
-        </button>
-        <button class="nav-item group" data-view="report" title="Brain" onclick="setView('report')">
-          <i data-lucide="brain" class="nav-icon"></i><span class="nav-label">Brain</span>
-        </button>
-        <button class="nav-item group" data-view="community" title="資訊交流" onclick="setView('community')">
-          <i data-lucide="messages-square" class="nav-icon"></i><span class="nav-label">資訊交流</span>
-        </button>
-        <button class="nav-item group" data-view="details" title="專案詳情" onclick="setView('details')">
-          <i data-lucide="layout-dashboard" class="nav-icon"></i><span class="nav-label">專案詳情</span>
-        </button>
-      </nav>
+        <div id="landing-loading" class="hidden mt-6 text-center text-sm text-gray-600">登入狀態還原中，請稍候…</div>
+      </div>
+      <p class="text-xs text-gray-400 text-center mt-6">本網站使用 Firebase Auth 進行登入；登入後方能讀取/寫入資料。</p>
     </div>
+  </section>
 
-    <!-- 下：登入/登出 -->
-    <div class="w-full flex flex-col items-stretch space-y-1 px-1">
-      <button id="btn-signin" class="nav-item group" title="使用 Google 登入" onclick="signInWithGoogle()">
-        <i data-lucide="log-in" class="nav-icon"></i><span class="nav-label">登入</span>
-      </button>
-      <button id="btn-signout" class="nav-item group hidden" title="登出" onclick="appSignOut()">
-        <i data-lucide="log-out" class="nav-icon"></i><span class="nav-label">登出</span>
-      </button>
-    </div>
-  </aside>
+  <div id="app-shell" class="hidden">
+    <aside id="app-sidebar" class="fixed inset-y-2 left-2 z-10 rounded-2xl bg-black text-white shadow-2xl flex flex-col justify-between py-3 transition-all duration-200 expanded" style="width:240px;">
+      <div class="w-full">
+        <div class="flex items-center justify-between px-3 mb-2">
+          <button class="w-10 h-10 rounded-xl bg-gradient-to-br from-pink-500 via-purple-500 to-indigo-500 shadow-md" title="Home" onclick="setView('dashboard')"></button>
+          <button id="btn-toggle" class="p-2 rounded-lg hover:bg-white/10" title="收合/展開" onclick="toggleSidebar()"><i data-lucide="panel-left-close" class="w-5 h-5"></i></button>
+        </div>
+        <nav class="w-full flex flex-col items-stretch space-y-1 px-1">
+          <button class="nav-item group" data-view="dashboard" onclick="setView('dashboard')"><i data-lucide="house" class="w-5 h-5"></i><span class="nav-label">Home</span></button>
+          <button class="nav-item group" data-view="tasks" onclick="setView('tasks')"><i data-lucide="calendar-days" class="w-5 h-5"></i><span class="nav-label">Planner</span></button>
+          <button class="nav-item group" data-view="calendar" onclick="setView('calendar')"><i data-lucide="calendar" class="w-5 h-5"></i><span class="nav-label">行事曆</span></button>
+          <button class="nav-item group" data-view="report" onclick="setView('report')"><i data-lucide="brain" class="w-5 h-5"></i><span class="nav-label">Brain</span></button>
+          <button class="nav-item group" data-view="community" onclick="setView('community')"><i data-lucide="messages-square" class="w-5 h-5"></i><span class="nav-label">資訊交流</span></button>
+          <button class="nav-item group" data-view="details" onclick="setView('details')"><i data-lucide="layout-dashboard" class="w-5 h-5"></i><span class="nav-label">專案詳情</span></button>
+        </nav>
+      </div>
+      <div class="w-full flex flex-col items-stretch space-y-1 px-1">
+        <div id="user-box" class="flex items-center gap-2 px-2 py-2 rounded-lg bg-white/10 mx-1">
+          <div class="w-8 h-8 rounded-full bg-gray-200 overflow-hidden flex-shrink-0">
+            <img id="user-avatar" alt="" class="w-full h-full object-cover hidden">
+            <div id="user-initial" class="w-full h-full flex items-center justify-center text-black/70 font-bold text-sm"></div>
+          </div>
+          <div class="min-w-0">
+            <div id="user-display-name" class="text-sm font-semibold truncate"></div>
+            <div id="user-email" class="text-xs opacity-80 truncate"></div>
+          </div>
+        </div>
+        <button id="btn-signout" class="nav-item group" onclick="appSignOut()"><i data-lucide="log-out" class="w-5 h-5"></i><span class="nav-label">登出</span></button>
+      </div>
+    </aside>
 
-  <!-- 主內容（margin-left 會依側欄寬度調整） -->
-  <main id="app-main" class="flex-grow p-8" style="margin-left:240px;">
-    <div id="main-content" class="w-full"></div>
-  </main>
+    <main id="app-main" class="flex-grow p-8" style="margin-left:240px;">
+      <div id="main-content" class="w-full"></div>
+    </main>
+  </div>
 
-  <!-- Modal -->
   <div id="custom-modal" class="fixed inset-0 bg-gray-900 bg-opacity-75 z-50 hidden items-center justify-center">
     <div class="bg-white rounded-xl p-6 w-full max-w-sm shadow-2xl transform transition-all duration-300 scale-95 opacity-0" id="modal-content-wrapper">
       <h3 id="modal-title" class="text-xl font-bold mb-4 text-primary-blue">提示</h3>
       <p id="modal-message" class="text-gray-700 mb-6"></p>
-      <div class="flex justify-end space-x-3">
-        <button id="modal-confirm-btn" class="px-4 py-2 bg-primary-blue text-white rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500">確認</button>
-      </div>
+      <div class="flex justify-end"><button id="modal-confirm-btn" class="px-4 py-2 bg-primary-blue text-white rounded-lg hover:bg-blue-700">確認</button></div>
     </div>
   </div>
 
-  <!-- App 腳本 -->
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
     import { initializeAppCheck, ReCaptchaV3Provider } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app-check.js";
     import {
       getAuth, onAuthStateChanged, GoogleAuthProvider,
-      signInWithPopup, signInWithRedirect, getRedirectResult, signOut
+      signInWithPopup, signInWithRedirect, getRedirectResult, signOut, setPersistence, browserLocalPersistence
     } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
     import {
       getFirestore, doc, addDoc, setDoc, updateDoc, deleteDoc,
@@ -173,14 +168,12 @@
 
     setLogLevel('error');
 
-    // 全域狀態
     let db, auth, storage;
     let currentUserId = "";
     let isAuthReady = false;
     let listenersStarted = false;
     let userProfile = { displayName:"", email:"", photoURL:"" };
 
-    // 設定
     const APP_ID = window.__app_id || "default-app-id";
     const firebaseConfig = window.__firebase_config_object || null;
     const APP_CHECK_SITE_KEY = window.__app_check_site_key || "";
@@ -189,20 +182,17 @@
     const SHAREPOINT_FLOW_URL   = window.__sharepoint_flow_url || "";
     const AI_SUMMARY_WEBAPP_URL = window.__ai_summary_webapp_url || "";
 
-    // Firestore 路徑
     const PROJECTS_COLLECTION_PATH = `artifacts/${APP_ID}/public/data/project_metadata`;
     const TASKS_COLLECTION_PATH    = `artifacts/${APP_ID}/public/data/project_tasks`;
     const EVENTS_COLLECTION_PATH   = `artifacts/${APP_ID}/public/data/calendar_events`;
     const FILES_COLLECTION_PATH    = `artifacts/${APP_ID}/public/data/project_files`;
-    const SETTINGS_DOC_PATH        = `artifacts/${APP_ID}/public/settings`; // 偶數段（文件）
+    const SETTINGS_DOC_PATH        = `artifacts/${APP_ID}/public/settings`;
     const MANAGERS_COLLECTION_PATH = `artifacts/${APP_ID}/public/settings/project_managers`;
     const COMMUNITY_COLLECTION_PATH= `artifacts/${APP_ID}/public/community/posts`;
 
-    // 人員名單（動態）＋預設
     const DEFAULT_MANAGERS = ["蔡雅雯","陳乃菁","吳曉琪","蘇琬淳","楊穎潔","王小明","李小華","張曉安"];
-    let managers = []; // [{id,name,email?,title?}]
+    let managers = [];
 
-    // App 資料
     let currentView = "dashboard";
     let projects = [];
     let tasks = [];
@@ -212,8 +202,6 @@
     let budgetCaps = { personnelCap: 0, operatingCap: 0, equipmentCap: 0 };
     let selectedProjectId = null;
     let calendarInstance = null;
-
-    // 工具
     function escapeHtml(str){
       if(str==null) return "";
       return String(str).replace(/&/g,"&amp;").replace(/</g,"&lt;")
@@ -361,7 +349,8 @@
       auth = getAuth(app);
       storage = getStorage(app);
 
-      // 監聽登入狀態
+      await setPersistence(auth, browserLocalPersistence);
+
       onAuthStateChanged(auth, async (user)=>{
         isAuthReady = true;
         if(user){
@@ -371,28 +360,87 @@
             email: user.email || "",
             photoURL: user.photoURL || ""
           };
-          updateAuthUI(true);
-          if(!listenersStarted) initializeSystem(true);
+          updateUserUI();
+          showAppShell();
+          if(!listenersStarted) startRealtimeListeners();
           await handleRedirectResultOnce();
         }else{
           currentUserId = "";
           userProfile = { displayName:"", email:"", photoURL:"" };
-          updateAuthUI(false);
-          initializeSystem(false); // 仍先渲染儀表板（未登入版）
+          showLanding();
         }
       });
     }
 
-    function updateAuthUI(loggedIn){
-      const btnIn  = document.getElementById("btn-signin");
-      const btnOut = document.getElementById("btn-signout");
-      if(btnIn)  btnIn.classList.toggle("hidden", !!loggedIn);
-      if(btnOut) btnOut.classList.toggle("hidden", !loggedIn);
+    function updateUserUI(){
+      const name = userProfile.displayName || userProfile.email || "使用者";
+      const email = userProfile.email || "";
+      const photoURL = userProfile.photoURL || "";
+      const initial = name.charAt(0).toUpperCase();
+
+      const landingUser = document.getElementById("landing-user");
+      const landingName = document.getElementById("landing-name");
+      const landingEmail = document.getElementById("landing-email");
+      const landingAvatar = document.getElementById("landing-avatar");
+      const landingInitial = document.getElementById("landing-initial");
+      const landingLogin = document.getElementById("btn-landing-login");
+
+      if(currentUserId){
+        if(landingUser) landingUser.classList.remove("hidden");
+        if(landingLogin) landingLogin.classList.add("hidden");
+        if(landingName) landingName.textContent = name;
+        if(landingEmail) landingEmail.textContent = email;
+        if(photoURL){
+          if(landingAvatar){ landingAvatar.src = photoURL; landingAvatar.classList.remove("hidden"); }
+          if(landingInitial) landingInitial.classList.add("hidden");
+        }else{
+          if(landingAvatar) landingAvatar.classList.add("hidden");
+          if(landingInitial){ landingInitial.textContent = initial; landingInitial.classList.remove("hidden"); }
+        }
+      }
+
+      const userDisplayName = document.getElementById("user-display-name");
+      const userEmail = document.getElementById("user-email");
+      const userAvatar = document.getElementById("user-avatar");
+      const userInitial = document.getElementById("user-initial");
+
+      if(userDisplayName) userDisplayName.textContent = name;
+      if(userEmail) userEmail.textContent = email;
+      if(photoURL){
+        if(userAvatar){ userAvatar.src = photoURL; userAvatar.classList.remove("hidden"); }
+        if(userInitial) userInitial.classList.add("hidden");
+      }else{
+        if(userAvatar) userAvatar.classList.add("hidden");
+        if(userInitial){ userInitial.textContent = initial; userInitial.classList.remove("hidden"); }
+      }
+
       if(window.lucide?.createIcons) lucide.createIcons();
     }
 
-    // 登入：Popup → 失敗 fallback Redirect
+    function showLanding(){
+      const landing = document.getElementById("landing");
+      const appShell = document.getElementById("app-shell");
+      if(landing) landing.classList.remove("hidden");
+      if(appShell) appShell.classList.add("hidden");
+      if(window.lucide?.createIcons) lucide.createIcons();
+    }
+
+    function showAppShell(){
+      const landing = document.getElementById("landing");
+      const appShell = document.getElementById("app-shell");
+      if(landing) landing.classList.add("hidden");
+      if(appShell) appShell.classList.remove("hidden");
+      if(currentView!=="dashboard") currentView = "dashboard";
+      renderDashboard();
+      if(window.lucide?.createIcons) lucide.createIcons();
+    }
+
     window.signInWithGoogle = async function(){
+      const loadingEl = document.getElementById("landing-loading");
+      const loginBtn = document.getElementById("btn-landing-login");
+      if(loadingEl) loadingEl.classList.remove("hidden");
+      if(loginBtn) loginBtn.disabled = true;
+
       try{
         const provider = new GoogleAuthProvider();
         provider.setCustomParameters({ prompt: 'select_account' });
@@ -414,9 +462,13 @@
             await signInWithRedirect(auth, provider);
           }catch(err2){
             console.error(err2); showModal("登入失敗", err2?.message || String(err2));
+            if(loadingEl) loadingEl.classList.add("hidden");
+            if(loginBtn) loginBtn.disabled = false;
           }
         }else{
           console.error(e); showModal("登入失敗", e?.message || String(e));
+          if(loadingEl) loadingEl.classList.add("hidden");
+          if(loginBtn) loginBtn.disabled = false;
         }
       }
     };
@@ -424,20 +476,18 @@
       try{ await getRedirectResult(auth); }catch(e){ console.warn("redirect login error:", e); }
     }
     window.appSignOut = async function(){
-      try{ await signOut(auth); showModal("已登出","您已成功登出。"); }
-      catch(e){ console.error(e); showModal("登出失敗", e?.message || String(e)); }
+      try{
+        await signOut(auth);
+        showModal("已登出","您已成功登出。");
+      }catch(e){
+        console.error(e);
+        showModal("登出失敗", e?.message || String(e));
+      }
     };
 
-    // 系統初始化與監聽
-    function initializeSystem(withData){
-      // 先顯示儀表板（避免初次開啟空白）
-      if(currentView!=="dashboard") currentView = "dashboard";
-      renderDashboard(true); // 加入載入中狀態
-      if(withData) startRealtimeListeners();
-    }
-
     function startRealtimeListeners(){
-      if(!db || listenersStarted) return; listenersStarted = true;
+      if(!db || listenersStarted) return;
+      listenersStarted = true;
 
       onSnapshot(query(collection(db, PROJECTS_COLLECTION_PATH), orderBy("createdAt","desc")), (snap)=>{
         projects = snap.docs.map(d=>({id:d.id, ...d.data()}));
@@ -498,20 +548,16 @@
       if(currentView==="community") renderCommunity();
     }
 
-    // 儀表板（加入「載入中」與「未登入」狀態，避免初次空白）
-    function renderDashboard(isBoot=false){
+    // 儀表板
+    function renderDashboard(){
       const c = document.getElementById("main-content");
       if(!c) return;
-
-      // 未登入時顯示提示，但仍渲染骨架
-      const notLogged = !currentUserId;
 
       const totalProjects = projects.length;
       const completed = projects.filter(p => (n(p.progress)) >= 95).length;
       const totalBudget = projects.reduce((s,p)=>s+n(p.budget),0);
       const empty = totalProjects===0;
 
-      // 聚合已用
       let personnelUsed = 0, operatingUsed = 0, equipmentUsed = 0;
       for(const p of projects){
         const pu = ('personnelUsed' in p) ? n(p.personnelUsed) : n(p.personnelBudget);
@@ -529,18 +575,7 @@
       c.innerHTML = `
         <h2 class="text-3xl font-bold text-gray-800 mb-6 border-b pb-2 flex items-center">
           <i data-lucide="layout-dashboard" class="w-7 h-7 mr-3 text-primary-blue"></i> 專案儀表板
-          ${notLogged ? '<span class="ml-3 text-xs px-2 py-1 rounded bg-yellow-100 text-yellow-800">請先登入以讀取資料</span>' : ''}
         </h2>
-
-        ${ isBoot && !listenersStarted ? `
-          <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8 animate-pulse">
-            ${[1,2,3].map(()=>`
-              <div class="bg-white p-6 rounded-xl shadow-lg">
-                <div class="h-6 bg-gray-200 rounded w-1/3 mb-4"></div>
-                <div class="h-8 bg-gray-200 rounded w-1/2"></div>
-              </div>`).join('')}
-          </div>
-        ` : ''}
 
         <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
           <div class="project-card bg-white p-6 rounded-xl shadow-lg border-t-4 border-primary-blue">
@@ -590,7 +625,7 @@
             empty ? `
             <div class="text-center py-10">
               <i data-lucide="alert-triangle" class="w-10 h-10 text-yellow-500 mx-auto mb-4"></i>
-              <p class="text-lg text-gray-600">${notLogged ? '請先登入以載入專案資料。' : '目前沒有專案資料。'}</p>
+              <p class="text-lg text-gray-600">目前沒有專案資料。</p>
               <button onclick="setView('creation')" class="mt-4 px-4 py-2 bg-primary-blue text-white rounded-lg hover:bg-blue-700 transition">
                 <i data-lucide="plus" class="w-5 h-5 inline mr-1"></i> 新增第一個專案
               </button>
@@ -1439,28 +1474,26 @@
 
     // 啟動：先渲染儀表板骨架，再初始化 Firebase，避免初次空白
     window.addEventListener('DOMContentLoaded', ()=>{
-      // 側欄初始狀態：預設展開；若有儲存則套用
       const savedExpanded = (()=>{
         try{ return localStorage.getItem('sidebarExpanded') !== '0'; }catch{ return true; }
       })();
-      // 設定初始樣式
       const sb = document.getElementById('app-sidebar');
       const main = document.getElementById('app-main');
-      sb.classList.toggle('expanded', savedExpanded);
-      sb.classList.toggle('collapsed', !savedExpanded);
-      sb.style.width = savedExpanded ? '240px' : '72px';
+      if(sb){
+        sb.classList.toggle('expanded', savedExpanded);
+        sb.classList.toggle('collapsed', !savedExpanded);
+        sb.style.width = savedExpanded ? '240px' : '72px';
+      }
       if(main) main.style.marginLeft = savedExpanded ? '240px' : '72px';
       const btn = document.getElementById('btn-toggle');
       if(btn){
         btn.title = savedExpanded ? '收合' : '展開';
-        btn.innerHTML = savedExpanded ? '<i data-lucide="panel-left-close" class="nav-icon"></i>' : '<i data-lucide="panel-left-open" class="nav-icon"></i>';
+        btn.innerHTML = savedExpanded ? '<i data-lucide="panel-left-close" class="w-5 h-5"></i>' : '<i data-lucide="panel-left-open" class="w-5 h-5"></i>';
       }
 
-      // 首次先顯示儀表板（載入中骨架）
-      currentView = "dashboard";
-      renderDashboard(true);
+      const loadingEl = document.getElementById("landing-loading");
+      if(loadingEl) loadingEl.classList.remove("hidden");
 
-      // 初始化 Firebase/Auth（完成後會觸發資料監聽並刷新畫面）
       initFirebase();
 
       if(window.lucide?.createIcons) lucide.createIcons();

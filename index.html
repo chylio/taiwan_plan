@@ -44,7 +44,7 @@
       appId: "1:874700126533:web:5461432d0169b7de6ee62c"
     };
     window.__app_id = "taiwanplan-f7566";
-    window.__auth_mode = "google";
+    window.__auth_mode = "password";
     window.__sharepoint_flow_url = "REPLACE_WITH_YOUR_POWER_AUTOMATE_HTTP_TRIGGER_URL";
     window.__ai_summary_webapp_url = "https://script.google.com/macros/s/AKfycbzBaT08WiuMIpqVNrG70iTVMUFXY1X-1zSn0uKa3xgLa4KdUwFbL5q7xh5OwpJMAblAdQ/exec";
   </script>
@@ -85,7 +85,7 @@
       </div>
       <div class="bg-white/90 backdrop-blur rounded-2xl shadow-2xl p-8">
         <h1 class="text-3xl font-extrabold text-gray-900 text-center">Welcome back! 歡迎回來！</h1>
-        <p class="text-sm text-gray-500 text-center mt-2">使用 Google 帳號登入以進入儀表板</p>
+        <p class="text-sm text-gray-500 text-center mt-2">使用電子郵件及密碼登入或註冊新帳號</p>
         <div id="landing-user" class="hidden mt-6">
           <div class="flex items-center gap-3 p-3 rounded-xl bg-gray-50 border">
             <div class="w-10 h-10 rounded-full bg-gray-200 overflow-hidden">
@@ -98,9 +98,21 @@
             </div>
           </div>
         </div>
-        <button id="btn-landing-login" onclick="signInWithGoogle()" class="mt-6 w-full py-3 rounded-xl bg-primary-blue hover:bg-blue-700 text-white font-semibold flex items-center justify-center gap-2">
-          <img alt="" src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" class="w-5 h-5"/> 使用 Google 登入
-        </button>
+        <div id="auth-form" class="mt-6 space-y-4">
+          <div>
+            <label for="auth-email" class="block text-sm font-medium text-gray-700 mb-1">電子郵件</label>
+            <input type="email" id="auth-email" required class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-blue" placeholder="your@email.com"/>
+          </div>
+          <div>
+            <label for="auth-password" class="block text-sm font-medium text-gray-700 mb-1">密碼</label>
+            <input type="password" id="auth-password" required class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-blue" placeholder="至少 6 個字元"/>
+          </div>
+          <div id="auth-error" class="text-sm text-red-600 hidden"></div>
+          <div class="grid grid-cols-2 gap-3">
+            <button id="btn-register" onclick="signUpWithEmailPassword()" class="py-3 rounded-xl bg-secondary-green hover:bg-green-700 text-white font-semibold">註冊新帳號</button>
+            <button id="btn-signin" onclick="signInWithEmailPassword()" class="py-3 rounded-xl bg-primary-blue hover:bg-blue-700 text-white font-semibold">以帳號密碼登入</button>
+          </div>
+        </div>
         <div id="landing-loading" class="hidden mt-6 text-center text-sm text-gray-600">登入狀態還原中，請稍候…</div>
       </div>
       <p class="text-xs text-gray-400 text-center mt-6">本網站使用 Firebase Auth 進行登入；登入後方能讀取/寫入資料。</p>
@@ -155,8 +167,8 @@
     import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
     import { initializeAppCheck, ReCaptchaV3Provider } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app-check.js";
     import {
-      getAuth, onAuthStateChanged, GoogleAuthProvider,
-      signInWithPopup, signInWithRedirect, getRedirectResult, signOut, setPersistence, browserLocalPersistence
+      getAuth, onAuthStateChanged, 
+      createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, setPersistence, browserLocalPersistence
     } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
     import {
       getFirestore, doc, addDoc, setDoc, updateDoc, deleteDoc,
@@ -363,7 +375,6 @@
           updateUserUI();
           showAppShell();
           if(!listenersStarted) startRealtimeListeners();
-          await handleRedirectResultOnce();
         }else{
           currentUserId = "";
           userProfile = { displayName:"", email:"", photoURL:"" };
@@ -383,11 +394,11 @@
       const landingEmail = document.getElementById("landing-email");
       const landingAvatar = document.getElementById("landing-avatar");
       const landingInitial = document.getElementById("landing-initial");
-      const landingLogin = document.getElementById("btn-landing-login");
+      const authForm = document.getElementById("auth-form");
 
       if(currentUserId){
         if(landingUser) landingUser.classList.remove("hidden");
-        if(landingLogin) landingLogin.classList.add("hidden");
+        if(authForm) authForm.classList.add("hidden");
         if(landingName) landingName.textContent = name;
         if(landingEmail) landingEmail.textContent = email;
         if(photoURL){
@@ -435,46 +446,110 @@
       if(window.lucide?.createIcons) lucide.createIcons();
     }
 
-    window.signInWithGoogle = async function(){
-      const loadingEl = document.getElementById("landing-loading");
-      const loginBtn = document.getElementById("btn-landing-login");
-      if(loadingEl) loadingEl.classList.remove("hidden");
-      if(loginBtn) loginBtn.disabled = true;
-
-      try{
-        const provider = new GoogleAuthProvider();
-        provider.setCustomParameters({ prompt: 'select_account' });
-        await signInWithPopup(auth, provider);
-      }catch(e){
-        const code = e?.code || "";
-        const shouldRedirect = [
-          "auth/popup-blocked",
-          "auth/cancelled-popup-request",
-          "auth/operation-not-supported-in-this-environment",
-          "auth/idpiframe-initialization-failed",
-          "auth/unauthorized-domain",
-          "auth/internal-error"
-        ].some(p => code.includes(p));
-        if(shouldRedirect){
-          try{
-            const provider = new GoogleAuthProvider();
-            provider.setCustomParameters({ prompt: 'select_account' });
-            await signInWithRedirect(auth, provider);
-          }catch(err2){
-            console.error(err2); showModal("登入失敗", err2?.message || String(err2));
-            if(loadingEl) loadingEl.classList.add("hidden");
-            if(loginBtn) loginBtn.disabled = false;
-          }
-        }else{
-          console.error(e); showModal("登入失敗", e?.message || String(e));
-          if(loadingEl) loadingEl.classList.add("hidden");
-          if(loginBtn) loginBtn.disabled = false;
+    window.signUpWithEmailPassword = async function(){
+      const emailEl = document.getElementById("auth-email");
+      const passwordEl = document.getElementById("auth-password");
+      const errorEl = document.getElementById("auth-error");
+      const registerBtn = document.getElementById("btn-register");
+      const signinBtn = document.getElementById("btn-signin");
+      
+      const email = emailEl?.value?.trim() || "";
+      const password = passwordEl?.value || "";
+      
+      if(errorEl) errorEl.classList.add("hidden");
+      
+      if(!email || !password){
+        if(errorEl){
+          errorEl.textContent = "請輸入電子郵件和密碼";
+          errorEl.classList.remove("hidden");
         }
+        return;
+      }
+      
+      if(password.length < 6){
+        if(errorEl){
+          errorEl.textContent = "密碼至少需要 6 個字元";
+          errorEl.classList.remove("hidden");
+        }
+        return;
+      }
+      
+      if(registerBtn) registerBtn.disabled = true;
+      if(signinBtn) signinBtn.disabled = true;
+      
+      try{
+        await createUserWithEmailAndPassword(auth, email, password);
+        // User will be automatically signed in and onAuthStateChanged will handle the rest
+      }catch(e){
+        console.error(e);
+        let message = "註冊失敗";
+        const code = e?.code || "";
+        if(code === "auth/email-already-in-use"){
+          message = "此電子郵件已被註冊，請使用登入功能";
+        }else if(code === "auth/invalid-email"){
+          message = "電子郵件格式不正確";
+        }else if(code === "auth/weak-password"){
+          message = "密碼強度不足，請使用至少 6 個字元";
+        }else{
+          message = e?.message || String(e);
+        }
+        if(errorEl){
+          errorEl.textContent = message;
+          errorEl.classList.remove("hidden");
+        }
+        if(registerBtn) registerBtn.disabled = false;
+        if(signinBtn) signinBtn.disabled = false;
       }
     };
-    async function handleRedirectResultOnce(){
-      try{ await getRedirectResult(auth); }catch(e){ console.warn("redirect login error:", e); }
-    }
+    
+    window.signInWithEmailPassword = async function(){
+      const emailEl = document.getElementById("auth-email");
+      const passwordEl = document.getElementById("auth-password");
+      const errorEl = document.getElementById("auth-error");
+      const registerBtn = document.getElementById("btn-register");
+      const signinBtn = document.getElementById("btn-signin");
+      
+      const email = emailEl?.value?.trim() || "";
+      const password = passwordEl?.value || "";
+      
+      if(errorEl) errorEl.classList.add("hidden");
+      
+      if(!email || !password){
+        if(errorEl){
+          errorEl.textContent = "請輸入電子郵件和密碼";
+          errorEl.classList.remove("hidden");
+        }
+        return;
+      }
+      
+      if(registerBtn) registerBtn.disabled = true;
+      if(signinBtn) signinBtn.disabled = true;
+      
+      try{
+        await signInWithEmailAndPassword(auth, email, password);
+        // User will be signed in and onAuthStateChanged will handle the rest
+      }catch(e){
+        console.error(e);
+        let message = "登入失敗";
+        const code = e?.code || "";
+        if(code === "auth/user-not-found" || code === "auth/wrong-password" || code === "auth/invalid-credential"){
+          message = "電子郵件或密碼錯誤";
+        }else if(code === "auth/invalid-email"){
+          message = "電子郵件格式不正確";
+        }else if(code === "auth/user-disabled"){
+          message = "此帳號已被停用";
+        }else{
+          message = e?.message || String(e);
+        }
+        if(errorEl){
+          errorEl.textContent = message;
+          errorEl.classList.remove("hidden");
+        }
+        if(registerBtn) registerBtn.disabled = false;
+        if(signinBtn) signinBtn.disabled = false;
+      }
+    };
+    
     window.appSignOut = async function(){
       try{
         await signOut(auth);
@@ -1319,7 +1394,7 @@
       return uploaded;
     }
     async function createCommunityPost({ text, files }){
-      if(!currentUserId){ showModal("請先登入","請先使用 Google 登入再發佈貼文。"); return; }
+      if(!currentUserId){ showModal("請先登入","請先登入再發佈貼文。"); return; }
       const images = files && files.length ? await uploadCommunityImages(files) : [];
       await addDoc(collection(db, COMMUNITY_COLLECTION_PATH), {
         authorUid: currentUserId,
@@ -1380,7 +1455,6 @@
               ` : `
                 <div class="text-sm text-gray-600">
                   請先登入後即可發佈貼文。
-                  <button onclick="signInWithGoogle()" class="ml-2 px-3 py-1 text-white bg-primary-blue rounded-md">使用 Google 登入</button>
                 </div>
               `}
             </div>
@@ -1426,7 +1500,7 @@
       if(form){
         form.addEventListener("submit", async (e)=>{
           e.preventDefault();
-          if(!currentUserId){ showModal("請先登入","請先使用 Google 登入再發佈貼文。"); return; }
+          if(!currentUserId){ showModal("請先登入","請先登入再發佈貼文。"); return; }
           const text = document.getElementById("post-text").value.trim();
           const files = document.getElementById("post-images").files;
           const progEl = document.getElementById("post-upload-progress");

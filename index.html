@@ -87,12 +87,16 @@
     #debug .pill{background:#374151;color:#9ca3af;border-radius:20px;padding:2px 8px;margin-left:6px;font-size:11px}
     #debug .ok{color:#10b981} #debug .warn{color:#f59e0b} #debug .err{color:#ef4444}
 
-    /* In-App Browser 阻擋提示 Overlay */
+    /* In-App Browser Overlay */
     #inapp-overlay{position:fixed;inset:0;z-index:60;background:rgba(17,24,39,.85);color:#e5e7eb;display:none}
     #inapp-card{max-width:30rem;margin:10vh auto;background:#111827;border:1px solid #374151;border-radius:14px;padding:18px}
     .action-btn{display:inline-flex;align-items:center;gap:.4rem;border-radius:10px;padding:.5rem .8rem}
     .btn-blue{background:#2563eb;color:#fff}
     .btn-gray{background:#374151;color:#e5e7eb}
+
+    .link{color:#2563eb;cursor:pointer}
+    .link:hover{text-decoration:underline}
+    .disabled{opacity:.6;cursor:not-allowed}
   </style>
 </head>
 <body class="bg-gray-50 font-sans min-h-screen">
@@ -108,18 +112,36 @@
 
       <div class="bg-white/90 backdrop-blur rounded-2xl shadow-2xl p-8">
         <h1 class="text-3xl font-extrabold text-gray-900 text-center">Welcome back! 歡迎回來！</h1>
-        <p class="text-sm text-gray-500 text-center mt-2">使用 Google 帳號登入以進入儀表板</p>
+        <p class="text-sm text-gray-500 text-center mt-2">請選擇登入方式</p>
 
-        <button id="btn-landing-login" onclick="signInWithGoogle()" disabled
-                class="mt-6 w-full py-3 rounded-xl bg-blue-800 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold flex items-center justify-center gap-2">
+        <!-- Google 登入 -->
+        <button id="btn-google" onclick="signInWithGoogle()" disabled
+                class="mt-4 w-full py-3 rounded-xl bg-blue-800 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold flex items-center justify-center gap-2">
           <img alt="" src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" class="w-5 h-5"/> 使用 Google 登入
         </button>
+
+        <!-- Email/Password 備援登入 -->
+        <div class="mt-6">
+          <div class="text-center text-sm text-gray-500 mb-2">或使用 Email 登入</div>
+          <form id="email-form" class="space-y-3">
+            <input id="email" type="email" required placeholder="Email" class="w-full border rounded-lg p-2 border-gray-300"/>
+            <input id="password" type="password" required placeholder="密碼（至少 6 碼）" class="w-full border rounded-lg p-2 border-gray-300"/>
+            <div class="flex gap-2">
+              <button id="btn-email-signin" type="submit" class="flex-1 py-2 rounded-lg bg-gray-900 text-white">Email 登入</button>
+              <button id="btn-email-signup" type="button" class="flex-1 py-2 rounded-lg bg-gray-100">註冊</button>
+            </div>
+            <div class="text-right">
+              <button id="btn-reset" type="button" class="text-xs text-blue-700 underline">忘記密碼</button>
+            </div>
+            <div id="email-msg" class="text-sm"></div>
+          </form>
+        </div>
 
         <div class="flex items-center justify-between mt-3 text-xs text-gray-600">
           <div id="landing-loading" class="hidden">登入狀態還原中，請稍候…</div>
           <div class="space-x-3">
-            <button id="btn-auth-reset" class="hidden text-blue-600 underline" onclick="clearAuthStuck()">清除登入狀態</button>
-            <button id="btn-open-window" class="hidden text-blue-600 underline" onclick="openInNewWindow()">在新視窗開啟</button>
+            <button id="btn-auth-reset" class="hidden link" onclick="clearAuthStuck()">清除登入狀態</button>
+            <button id="btn-open-window" class="hidden link" onclick="openInNewWindow()">在新視窗開啟</button>
           </div>
         </div>
       </div>
@@ -131,10 +153,10 @@
   <!-- In-App Browser Overlay -->
   <div id="inapp-overlay" aria-hidden="true">
     <div id="inapp-card">
-      <div class="text-lg font-bold mb-1">請在外部瀏覽器開啟以登入</div>
+      <div class="text-lg font-bold mb-1">請在外部瀏覽器開啟以使用 Google 登入</div>
       <div class="text-sm text-gray-300">
-        偵測到目前是在 App 內建瀏覽器中（LINE/FB/IG 等），Google 登入會被封鎖（403: disallowed_useragent）。<br/>
-        請按照下列任一方式操作後再登入：
+        偵測到目前是 App 內建瀏覽器（LINE/FB/IG 等），Google 登入會被封鎖（403: disallowed_useragent）。<br/>
+        你仍可使用「Email 登入」；若要用 Google 登入，請改在外部瀏覽器開啟本頁。
       </div>
       <ul class="text-sm text-gray-200 list-disc pl-6 mt-3 space-y-1">
         <li>點右上角或分享選單，選「在瀏覽器中開啟」（iOS: Safari；Android: Chrome）。</li>
@@ -144,11 +166,10 @@
         <button class="action-btn btn-blue" onclick="openInNewWindow()"><i data-lucide='external-link' class='w-4 h-4'></i>在新視窗開啟</button>
         <button class="action-btn btn-gray" onclick="copyUrl()"><i data-lucide='clipboard' class='w-4 h-4'></i>複製本站網址</button>
       </div>
-      <div class="text-xs text-gray-400 mt-3">若已在外部瀏覽器開啟，請關閉此頁面後直接使用外部瀏覽器再次開啟本網址。</div>
     </div>
   </div>
 
-  <!-- 應用殼（登入後顯示） -->
+  <!-- 應用殼 -->
   <div id="app-shell" class="hidden">
     <aside id="app-sidebar" class="fixed inset-y-2 left-2 z-10 rounded-2xl bg-black text-white shadow-2xl flex flex-col justify-between py-3 transition-all duration-200 expanded" style="width:240px;">
       <div class="w-full">
@@ -211,7 +232,10 @@
       signInWithPopup,
       signInWithRedirect,
       getRedirectResult,
-      signOut
+      signOut,
+      createUserWithEmailAndPassword,
+      signInWithEmailAndPassword,
+      sendPasswordResetEmail
     } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
     import {
       getFirestore, doc, addDoc, setDoc, updateDoc, deleteDoc,
@@ -223,11 +247,12 @@
 
     setLogLevel('error');
 
+    // Debug
     const debugMode = /[?&]debug=1/.test(location.search);
     const dbgEl = document.getElementById('debug');
     const dbgLogEl = document.getElementById('dbg-log');
     const dbgStateEl = document.getElementById('dbg-state');
-    if (debugMode) { dbgEl.style.display='block'; }
+    if (debugMode) dbgEl.style.display='block';
     function logDbg(type, msg, obj){
       if(!debugMode) return;
       const now = new Date().toISOString().slice(11,19);
@@ -236,16 +261,17 @@
     }
     function setDbgState(s, cls){ if(!debugMode) return; dbgStateEl.textContent = s; dbgStateEl.className = 'pill ' + (cls||''); }
 
+    // 全域
     let db, auth, storage;
     let currentUserId = "";
     let listenersStarted = false;
     let userProfile = { displayName:"", email:"", photoURL:"" };
 
+    // 設定
     const APP_ID = window.__app_id || "default-app-id";
     const firebaseConfig = window.__firebase_config_object || null;
-    const SHAREPOINT_FLOW_URL   = window.__sharepoint_flow_url || "";
-    const AI_SUMMARY_WEBAPP_URL = window.__ai_summary_webapp_url || "";
 
+    // Firestore 路徑
     const PROJECTS_COLLECTION_PATH = `artifacts/${APP_ID}/public/data/project_metadata`;
     const TASKS_COLLECTION_PATH    = `artifacts/${APP_ID}/public/data/project_tasks`;
     const EVENTS_COLLECTION_PATH   = `artifacts/${APP_ID}/public/data/calendar_events`;
@@ -254,28 +280,31 @@
     const MANAGERS_COLLECTION_PATH = `artifacts/${APP_ID}/public/settings/project_managers`;
     const COMMUNITY_COLLECTION_PATH= `artifacts/${APP_ID}/public/community/posts`;
 
+    // DOM
     const landing = document.getElementById("landing");
     const landingLoading=document.getElementById("landing-loading");
     const appShell = document.getElementById("app-shell");
-    const loginBtn = document.getElementById('btn-landing-login');
+    const btnGoogle = document.getElementById('btn-google');
     const resetBtn = document.getElementById('btn-auth-reset');
     const openWindowBtn = document.getElementById('btn-open-window');
     const inAppOverlay = document.getElementById('inapp-overlay');
 
+    const emailForm = document.getElementById('email-form');
+    const emailInput= document.getElementById('email');
+    const passInput = document.getElementById('password');
+    const emailMsg  = document.getElementById('email-msg');
+    const btnEmailSignIn = document.getElementById('btn-email-signin');
+    const btnEmailSignUp = document.getElementById('btn-email-signup');
+    const btnReset = document.getElementById('btn-reset');
+
+    // Utils
     function showModal(title, message){ alert((title||"提示") + (message?("\n\n" + message):"")); }
     function n(v){ return Number(v)||0; }
-    function clamp01(x){ return Math.max(0, Math.min(1, x)); }
     function fmtMoney(x){ return `$${(Number(x)||0).toLocaleString()}`; }
-    function escapeHtml(str){ if(str==null) return ""; return String(str).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#039;"); }
-
+    function canUseSessionStorage(){ try{ const k='__ss__'+Math.random(); sessionStorage.setItem(k,'1'); const ok=sessionStorage.getItem(k)==='1'; sessionStorage.removeItem(k); return ok; } catch{ return false; } }
     function isLikelyInAppBrowser(){
       const ua = navigator.userAgent || '';
-      // 常見 App WebView UA 標記
       return /(FBAN|FBAV|Instagram|Line\/| Line;|MicroMessenger|WeChat|Twitter|TikTok|MiuiBrowser|wv;|; wv\)|OPR\/|DuckDuckGo)/i.test(ua);
-    }
-    function canUseSessionStorage(){
-      try{ const k='__ss__'+Math.random(); sessionStorage.setItem(k,'1'); const ok=sessionStorage.getItem(k)==='1'; sessionStorage.removeItem(k); return ok; }
-      catch{ return false; }
     }
     function openInNewWindow(){ try{ window.open(location.href,'_blank','noopener,noreferrer'); }catch{} }
     window.openInNewWindow = openInNewWindow;
@@ -286,12 +315,14 @@
     }
     window.copyUrl = copyUrl;
 
+    // 顯示/隱藏 App
     function showAppShell(show){
       if(show){ landing.classList.add("hidden"); appShell.classList.remove("hidden"); }
       else{ appShell.classList.add("hidden"); landing.classList.remove("hidden"); }
       if(window.lucide?.createIcons) try{ lucide.createIcons(); }catch{}
     }
 
+    // 使用者 UI
     function updateUserChips(){
       const nameEl = document.getElementById("user-display-name");
       const emailEl= document.getElementById("user-email");
@@ -329,25 +360,23 @@
 
     async function clearAuthStuck(){
       try{ landingLoading?.classList.add("hidden"); }catch{}
-      try{ loginBtn?.removeAttribute('disabled'); }catch{}
+      try{ btnGoogle?.removeAttribute('disabled'); }catch{}
       try{ await signOut(auth); }catch{}
       try{ [localStorage, sessionStorage].forEach(store=>{ try{ for(const k of Object.keys(store)){ if(/^firebase:/.test(k) || /firebase/i.test(k)) store.removeItem(k); } }catch{} }); }catch{}
       logDbg('WARN','auth cache cleared');
-      alert('已清除登入快取，請在外部瀏覽器重新登入。');
+      alert('已清除登入快取，請重新登入。若你在 App 內建瀏覽器，建議改用外部瀏覽器或使用 Email 登入。');
     }
     window.clearAuthStuck = clearAuthStuck;
 
-    // 登入流程：Popup 優先；若 popup 被擋且 sessionStorage 可用，回退 Redirect；否則提示外部瀏覽器
+    // Google 登入：popup 優先；popup 被擋且 sessionStorage 可用時，回退 redirect；否則提示外部瀏覽器/使用 Email。
     window.signInWithGoogle = async function(){
-      // 若偵測到在 App 內建瀏覽器，直接提示改用外部瀏覽器，避免 403: disallowed_useragent
       if(isLikelyInAppBrowser()){
         inAppOverlay.style.display = 'block';
         openWindowBtn?.classList.remove('hidden');
         resetBtn?.classList.remove('hidden');
-        showModal("請在外部瀏覽器開啟", "目前處於 App 內建瀏覽器，Google 登入會被封鎖（403: disallowed_useragent）。請改用 Safari / Chrome 開啟本頁再登入。");
+        showModal("請在外部瀏覽器開啟", "目前為 App 內建瀏覽器環境，Google 登入會被封鎖（403: disallowed_useragent）。請改用 Safari/Chrome 或使用 Email 登入。");
         return;
       }
-
       try{
         if(!auth){ await initFirebase().catch(()=>{}); }
         if(!auth){ showModal("初始化中","驗證服務尚未就緒，請稍候再試或重新整理。"); return; }
@@ -366,20 +395,61 @@
           if(ssOK){
             setDbgState('redirecting','warn'); logDbg('INFO','fallback to signInWithRedirect');
             await signInWithRedirect(auth, provider);
+            return;
           }else{
             openWindowBtn?.classList.remove('hidden');
             resetBtn?.classList.remove('hidden');
             showModal("瀏覽器封鎖了登入視窗",
-              "請允許彈出視窗（pop-up），或點「在新視窗開啟」，或改用外部瀏覽器（Chrome/Edge/Safari 非無痕）。");
+              "請允許彈出視窗（pop-up），或點「在新視窗開啟」，或改用外部瀏覽器（Chrome/Edge/Safari 非無痕），或改用下方 Email 登入。");
           }
         }
       }catch(e){
         logDbg('ERR','signInWithGoogle outer catch', {code:e?.code, message:e?.message});
         landingLoading?.classList.add("hidden");
-        loginBtn?.removeAttribute('disabled');
+        btnGoogle?.removeAttribute('disabled');
         resetBtn?.classList.remove('hidden');
       }
     };
+
+    // Email/Password 登入/註冊/重設
+    function setEmailMsg(text, ok){
+      emailMsg.textContent = text || "";
+      emailMsg.className = "text-sm " + (ok ? "text-green-600" : "text-red-600");
+    }
+    emailForm.addEventListener('submit', async (e)=>{
+      e.preventDefault();
+      try{
+        const email = emailInput.value.trim();
+        const pass  = passInput.value;
+        setEmailMsg("登入中...", true);
+        await signInWithEmailAndPassword(auth, email, pass);
+        setEmailMsg("登入成功！正在進入儀表板...", true);
+      }catch(err){
+        setEmailMsg(err?.message || "登入失敗", false);
+      }
+    });
+    btnEmailSignUp.addEventListener('click', async ()=>{
+      try{
+        const email = emailInput.value.trim();
+        const pass  = passInput.value;
+        if(pass.length < 6){ setEmailMsg("密碼至少 6 碼。", false); return; }
+        setEmailMsg("註冊中...", true);
+        await createUserWithEmailAndPassword(auth, email, pass);
+        setEmailMsg("註冊成功，已自動登入！", true);
+      }catch(err){
+        setEmailMsg(err?.message || "註冊失敗", false);
+      }
+    });
+    btnReset.addEventListener('click', async ()=>{
+      try{
+        const email = (emailInput.value || "").trim();
+        if(!email){ setEmailMsg("請先輸入 Email 再點重設密碼。", false); return; }
+        await sendPasswordResetEmail(auth, email);
+        setEmailMsg("已寄出重設密碼信，請查收。", true);
+      }catch(err){
+        setEmailMsg(err?.message || "寄送失敗", false);
+      }
+    });
 
     window.appSignOut = async function(){
       try{ await signOut(auth); showModal("已登出","您已成功登出。"); applyUser(null); }
@@ -428,30 +498,36 @@
         if(!settled){
           logDbg('WARN','restore-timeout','no auth state after 7s');
           landingLoading?.classList.add("hidden");
-          loginBtn?.removeAttribute('disabled');
+          btnGoogle?.removeAttribute('disabled');
           resetBtn?.classList.remove('hidden');
           setDbgState('timeout','warn');
         }
       },7000);
 
+      // 先掛監聽
       onAuthStateChanged(auth, (user)=>{
         settled=true; clearTimeout(safetyTimer);
         landingLoading?.classList.add("hidden");
         logDbg('INFO','onAuthStateChanged', !!user ? 'user present' : 'no user');
         applyUser(user);
-        loginBtn?.removeAttribute('disabled');
+        btnGoogle?.removeAttribute('disabled');
+        // In-App 提醒（Google 會被封鎖，但 Email 可用）
+        if(isLikelyInAppBrowser()){
+          inAppOverlay.style.display = 'block';
+        }
       });
 
+      // 選擇持久化
       try{ await choosePersistence(auth); }catch(e){ logDbg('ERR','choosePersistence error', {code:e?.code, message:e?.message}); }
 
-      // 若之前已回退 redirect，這裡會拿到結果
+      // 若剛才回退走了 redirect，這裡會拿到結果
       try{
         const rr = await getRedirectResult(auth);
         if(rr?.user){
           logDbg('OK','getRedirectResult user', {uid:rr.user.uid, email:rr.user.email});
           applyUser(rr.user);
           landingLoading?.classList.add("hidden");
-          loginBtn?.removeAttribute('disabled');
+          btnGoogle?.removeAttribute('disabled');
           settled=true; clearTimeout(safetyTimer);
         }else{
           logDbg('INFO','getRedirectResult empty');
@@ -459,17 +535,11 @@
       }catch(e){
         logDbg('ERR','getRedirectResult error', {code:e?.code, message:e?.message});
       }
-
-      // 若處於 App 內建瀏覽器，顯示提示 Overlay，並停用登入按鈕
-      if(isLikelyInAppBrowser()){
-        inAppOverlay.style.display = 'block';
-        loginBtn?.setAttribute('disabled','true');
-      }
     }
 
     function isAuthorized(){ return !!currentUserId; }
 
-    // ====== 視圖（儀表板簡版，同之前） ======
+    // ====== 以下：資料/視圖（保留原功能，略） ======
     let managers=[]; const DEFAULT_MANAGERS=["蔡雅雯","陳乃菁","吳曉琪","蘇琬淳","楊穎潔","王小明","李小華","張曉安"];
     let currentView="dashboard",selectedProjectId=null,calendarInstance=null;
     let projects=[],tasks=[],events=[],files=[],communityPosts=[],budgetCaps={personnelCap:0,operatingCap:0,equipmentCap:0};
@@ -527,7 +597,7 @@
       const c=document.getElementById("main-content"); if(!c) return;
 
       const totalProjects=projects.length;
-      const completed=projects.filter(p=>(n(p.progress))>=95).length;
+      const completed=projects.filter(p=> (n(p.progress))>=95 ).length;
       const totalBudget=projects.reduce((s,p)=>s+n(p.budget),0);
       const empty=totalProjects===0;
 
@@ -539,9 +609,22 @@
         personnelUsed+=pu; operatingUsed+=ou; equipmentUsed+=eu;
       }
       const pc=n(budgetCaps.personnelCap), oc=n(budgetCaps.operatingCap), ec=n(budgetCaps.equipmentCap);
-      const pRate=pc>0?clamp01(personnelUsed/pc):0, oRate=oc>0?clamp01(operatingUsed/oc):0, eRate=ec>0?clamp01(equipmentUsed/ec):0;
+      const pRate=pc>0?Math.max(0,Math.min(1,personnelUsed/pc)):0;
+      const oRate=oc>0?Math.max(0,Math.min(1,operatingUsed/oc)):0;
+      const eRate=ec>0?Math.max(0,Math.min(1,equipmentUsed/ec)):0;
       const pRemain=pc-personnelUsed, oRemain=oc-operatingUsed, eRemain=ec-equipmentUsed;
       const barClass=(rate,remain)=> remain>=0?(rate>=0.95?"bg-yellow-400":"bg-blue-800"):"bg-red-500";
+
+      function sectionCard(title, value, icon, color){
+        return `
+          <div class="project-card bg-white p-6 rounded-xl shadow-lg border-t-4 ${color}">
+            <div class="flex items-center justify-between">
+              <div class="text-gray-500">${title}</div>
+              <i data-lucide="${icon}" class="w-8 h-8 ${color.includes('blue')?'text-blue-800':color.includes('green')?'text-green-600':'text-orange-600'}"></i>
+            </div>
+            <div class="mt-3 text-3xl font-extrabold text-gray-900">${value}</div>
+          </div>`;
+      }
 
       c.innerHTML=`
         <h2 class="text-3xl font-bold text-gray-800 mb-6 border-b pb-2 flex items-center"><i data-lucide="layout-dashboard" class="w-7 h-7 mr-3 text-blue-800"></i>專案儀表板</h2>
@@ -550,27 +633,9 @@
         </div>`:"" }
 
         <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-          <div class="project-card bg-white p-6 rounded-xl shadow-lg border-t-4 border-blue-800">
-            <div class="flex items-center justify-between">
-              <div class="text-gray-500">專案總數</div>
-              <i data-lucide="layers" class="w-8 h-8 text-blue-800"></i>
-            </div>
-            <div class="mt-3 text-3xl font-extrabold text-gray-900">${totalProjects}</div>
-          </div>
-          <div class="project-card bg-white p-6 rounded-xl shadow-lg border-t-4 border-green-600">
-            <div class="flex items-center justify-between">
-              <div class="text-gray-500">接近完成</div>
-              <i data-lucide="check-circle" class="w-8 h-8 text-green-600"></i>
-            </div>
-            <div class="mt-3 text-3xl font-extrabold text-gray-900">${completed}</div>
-          </div>
-          <div class="project-card bg-white p-6 rounded-xl shadow-lg border-t-4 border-orange-600">
-            <div class="flex items中心 justify-between">
-              <div class="text-gray-500">總預算</div>
-              <i data-lucide="wallet" class="w-8 h-8 text-orange-600"></i>
-            </div>
-            <div class="mt-3 text-3xl font-extrabold text-gray-900">${fmtMoney(totalBudget)}</div>
-          </div>
+          ${sectionCard('專案總數', totalProjects, 'layers', 'border-blue-800')}
+          ${sectionCard('接近完成', completed, 'check-circle', 'border-green-600')}
+          ${sectionCard('總預算', fmtMoney(totalBudget), 'wallet', 'border-orange-600')}
         </div>
 
         <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
@@ -607,13 +672,13 @@
       if(window.lucide?.createIcons) try{ lucide.createIcons(); }catch{}
     }
 
-    // 省略 tasks/calendar/report/community 的完整實作（與你先前版本一致）
+    // 其他視圖（tasks/calendar/report/community）可沿用原本邏輯，略。
 
     window.addEventListener('DOMContentLoaded', () => {
       initFirebase().catch(e=>{
         logDbg('ERR','initFirebase failed', {code:e?.code, message:e?.message});
         landingLoading?.classList.add("hidden");
-        loginBtn?.removeAttribute('disabled');
+        btnGoogle?.removeAttribute('disabled');
         resetBtn?.classList.remove('hidden');
       });
     });

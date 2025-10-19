@@ -457,6 +457,7 @@
       if(landing) landing.classList.remove("hidden");
       if(appShell) appShell.classList.add("hidden");
       if(window.lucide?.createIcons) lucide.createIcons();
+      authButtonsWired = false; // Reset flag when showing landing
       wireEmailAuthButtons();
     }
 
@@ -516,6 +517,7 @@
       try {
         setAuthLoading(true);
         await signInWithEmailAndPassword(auth, email, password);
+        showModal("登入成功", "歡迎回來！正在載入您的專案資料...");
       } catch (e) {
         console.error(e);
         if ((e?.code || "").includes("user-not-found")) {
@@ -524,6 +526,8 @@
           showAuthError("密碼錯誤");
         } else if ((e?.code || "").includes("invalid-credential")) {
           showAuthError("帳號或密碼不正確");
+        } else if ((e?.code || "").includes("invalid-email")) {
+          showAuthError("Email 格式不正確");
         } else {
           showAuthError(`登入失敗：${e?.message || String(e)}`);
         }
@@ -533,9 +537,18 @@
     };
 
     // 綁定按鈕
+    let authButtonsWired = false;
     function wireEmailAuthButtons(){
-      document.getElementById("btn-email-signin")?.addEventListener("click", (e)=>{ e.preventDefault(); window.signInWithEmailPassword(); });
-      document.getElementById("btn-email-signup")?.addEventListener("click", (e)=>{ e.preventDefault(); window.signUpWithEmailPassword(); });
+      if (authButtonsWired) return; // Prevent duplicate event listeners
+      const signInBtn = document.getElementById("btn-email-signin");
+      const signUpBtn = document.getElementById("btn-email-signup");
+      if (signInBtn) {
+        signInBtn.addEventListener("click", (e)=>{ e.preventDefault(); window.signInWithEmailPassword(); });
+      }
+      if (signUpBtn) {
+        signUpBtn.addEventListener("click", (e)=>{ e.preventDefault(); window.signUpWithEmailPassword(); });
+      }
+      authButtonsWired = true;
     }
 
     // 登出

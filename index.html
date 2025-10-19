@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>深耕計畫專案管理儀表板</title>
 
-  <!-- 修正後 CSP：允許 Firebase Auth 所需 Google/GS 靜態與 OAuth 子網域 -->
+  <!-- CSP：允許 Firebase Auth/Firestore/Storage 與 Google OAuth 所需來源 -->
   <meta http-equiv="Content-Security-Policy"
         content="default-src 'self';
                  script-src 'self' 'unsafe-inline'
@@ -89,7 +89,7 @@
                   linear-gradient(180deg, #ffffff 0%, #f7f7fb 100%);
     }
     /* debug 面板（?debug=1 顯示） */
-    #debug{position:fixed;right:8px;bottom:8px;background:#111827;color:#e5e7eb;border-radius:10px;max-width:48rem;width:calc(100vw - 16px);font:12px/1.4 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;box-shadow:0 10px 30px rgba(0,0,0,.35);display:none;z-index:9999}
+    #debug{position:fixed;right:8px;bottom:8px;background:#111827;color:#e5e7eb;border-radius:10px;max-width:48rem;width:calc(100vw - 16px);font:12px/1.4 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;display:none}
     #debug header{display:flex;justify-content:space-between;align-items:center;padding:6px 10px;border-bottom:1px solid #374151}
     #debug pre{margin:0;padding:8px 10px;max-height:40vh;overflow:auto;white-space:pre-wrap}
     #debug .pill{background:#374151;color:#9ca3af;border-radius:20px;padding:2px 8px;margin-left:6px;font-size:11px}
@@ -111,8 +111,9 @@
         <h1 class="text-3xl font-extrabold text-gray-900 text-center">Welcome back! 歡迎回來！</h1>
         <p class="text-sm text-gray-500 text-center mt-2">使用 Google 帳號登入以進入儀表板</p>
 
-        <button id="btn-landing-login" onclick="signInWithGoogle()"
-                class="mt-6 w-full py-3 rounded-xl bg-blue-800 hover:bg-blue-700 text-white font-semibold flex items-center justify-center gap-2">
+        <!-- 初始化完成前 disabled，避免 auth 尚未就緒觸發 auth/argument-error -->
+        <button id="btn-landing-login" onclick="signInWithGoogle()" disabled
+                class="mt-6 w-full py-3 rounded-xl bg-blue-800 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold flex items-center justify-center gap-2">
           <img alt="" src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" class="w-5 h-5"/> 使用 Google 登入
         </button>
 
@@ -238,6 +239,7 @@
     const landing = document.getElementById("landing");
     const landingLoading=document.getElementById("landing-loading");
     const appShell = document.getElementById("app-shell");
+    const loginBtn = document.getElementById('btn-landing-login');
 
     // 小工具
     function showModal(title, message){
@@ -247,8 +249,22 @@
     function clamp01(x){ return Math.max(0, Math.min(1, x)); }
     function fmtMoney(x){ return `$${(Number(x)||0).toLocaleString()}`; }
     function escapeHtml(str){ if(str==null) return ""; return String(str).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#039;"); }
-    function tsToDateStr(v){ try{ if(!v) return ""; if (typeof v==="string") return v.slice(0,10); if (v?.toDate) return v.toDate().toISOString().slice(0,10); if (v instanceof Date) return v.toISOString().slice(0,10); return ""; }catch{ return ""; } }
-    function overlapsRange(start,end,s,e){ if(!start && !end) return false; const aStart=start||end, aEnd=end||start, bStart=s||e, bEnd=e||s; if(!bStart && !bEnd) return true; if(!aStart||!aEnd||!bStart||!bEnd) return false; return (aStart<=bEnd)&&(bStart<=aEnd); }
+    function tsToDateStr(v){
+      try{
+        if(!v) return "";
+        if (typeof v==="string") return v.slice(0,10);
+        if (v?.toDate) return v.toDate().toISOString().slice(0,10);
+        if (v instanceof Date) return v.toISOString().slice(0,10);
+      }catch(e){ return "" }
+      return "";
+    }
+    function overlapsRange(start,end,s,e){
+      if(!start && !end) return false;
+      const aStart=start||end, aEnd=end||start, bStart=s||e, bEnd=e||s;
+      if(!bStart && !bEnd) return true;
+      if(!aStart||!aEnd||!bStart||!bEnd) return false;
+      return !(aEnd < bStart || aStart > bEnd);
+    }
     function inRange(d,s,e){ if(!d) return false; if(s && d<s) return false; if(e && d>e) return false; return true; }
 
     // 顯示/隱藏 App 殼與登入首頁
@@ -280,7 +296,7 @@
       }
     }
 
-    // 封裝：登入狀態套用並進入儀表板
+    // 套用登入狀態
     function applyUser(user){
       if(user){
         currentUserId = user.uid;
@@ -301,9 +317,16 @@
       }
     }
 
-    // Google 登入：固定 Redirect（最穩定）
+    // Google 登入（加入 auth 防呆）
     window.signInWithGoogle = async function(){
       try{
+        if(!auth){
+          await initFirebase().catch(()=>{});
+        }
+        if(!auth){
+          showModal("初始化中", "驗證服務尚未就緒，請稍候 1～2 秒再試或重新整理。");
+          return;
+        }
         const provider = new GoogleAuthProvider();
         provider.setCustomParameters({ prompt: 'select_account' });
         setDbgState('redirecting','warn'); logDbg('INFO','signInWithRedirect');
@@ -336,7 +359,9 @@
 
     // 初始化 Firebase/Auth（關鍵：initializeAuth + 多重持久化）
     async function initFirebase(){
+      if(auth) return; // 已初始化就略過
       if(!firebaseConfig){ showModal("設定錯誤","缺少 Firebase 設定"); return; }
+
       const app = initializeApp(firebaseConfig);
 
       auth = initializeAuth(app, {
@@ -366,7 +391,10 @@
         landingLoading?.classList.add("hidden");
         logDbg('INFO','onAuthStateChanged', !!user ? 'user present' : 'no user');
         applyUser(user);
+        // 初始化完成：啟用登入按鈕
+        loginBtn?.removeAttribute('disabled');
       });
+
       onIdTokenChanged(auth, (user) => {
         logDbg('INFO','onIdTokenChanged', !!user ? 'user present' : 'no user');
         if(user && !currentUserId) applyUser(user);
@@ -397,7 +425,14 @@
       else if(view==="community") renderCommunity();
       else if(view==="details"){ selectedProjectId=(typeof arg==="string"&&arg)?arg:(projects[0]?.id||null); renderProjectDetails(selectedProjectId); }
     };
-    function rerenderByView(){ if(currentView==="dashboard") renderDashboard(); if(currentView==="tasks") renderTaskManagement(); if(currentView==="calendar") renderCalendar(); if(currentView==="report") renderReport(); if(currentView==="community") renderCommunity(); if(currentView==="details") renderProjectDetails(selectedProjectId); }
+    function rerenderByView(){
+      if(currentView==="dashboard") renderDashboard();
+      if(currentView==="tasks") renderTaskManagement();
+      if(currentView==="calendar") renderCalendar();
+      if(currentView==="report") renderReport();
+      if(currentView==="community") renderCommunity();
+      if(currentView==="details") renderProjectDetails(selectedProjectId);
+    }
 
     function managerOptionsHtml(selected = ""){
       const list = (managers.length>0 ? managers.map(m=>m.name).filter(Boolean) : DEFAULT_MANAGERS);
@@ -472,9 +507,27 @@
         </div>`:"" }
 
         <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-          <div class="project-card bg-white p-6 rounded-xl shadow-lg border-t-4 border-blue-800"><div class="flex items-center justify-between"><i data-lucide="layers" class="w-8 h-8 text-blue-800"></i><span class="text-3xl font-extrabold text-gray-900">${totalProjects}</span></div><p class="text-gray-500 mt-2">總專案數</p></div>
-          <div class="project-card bg-white p-6 rounded-xl shadow-lg border-t-4 border-green-600"><div class="flex items-center justify-between"><i data-lucide="check-circle" class="w-8 h-8 text-green-600"></i><span class="text-3xl font-extrabold text-gray-900">${completed}</span></div><p class="text-gray-500 mt-2">接近完成專案數</p></div>
-          <div class="project-card bg-white p-6 rounded-xl shadow-lg border-t-4 border-orange-600"><div class="flex items-center justify-between"><i data-lucide="wallet" class="w-8 h-8 text-orange-600"></i><span class="text-xl font-extrabold text-gray-900">${fmtMoney(totalBudget)}</span></div><p class="text-gray-500 mt-2">所有專案的預算概算總計</p></div>
+          <div class="project-card bg-white p-6 rounded-xl shadow-lg border-t-4 border-blue-800">
+            <div class="flex items-center justify-between">
+              <div class="text-gray-500">專案總數</div>
+              <i data-lucide="layers" class="w-8 h-8 text-blue-800"></i>
+            </div>
+            <div class="mt-3 text-3xl font-extrabold text-gray-900">${totalProjects}</div>
+          </div>
+          <div class="project-card bg-white p-6 rounded-xl shadow-lg border-t-4 border-green-600">
+            <div class="flex items-center justify-between">
+              <div class="text-gray-500">接近完成</div>
+              <i data-lucide="check-circle" class="w-8 h-8 text-green-600"></i>
+            </div>
+            <div class="mt-3 text-3xl font-extrabold text-gray-900">${completed}</div>
+          </div>
+          <div class="project-card bg-white p-6 rounded-xl shadow-lg border-t-4 border-orange-600">
+            <div class="flex items-center justify-between">
+              <div class="text-gray-500">總預算</div>
+              <i data-lucide="wallet" class="w-8 h-8 text-orange-600"></i>
+            </div>
+            <div class="mt-3 text-3xl font-extrabold text-gray-900">${fmtMoney(totalBudget)}</div>
+          </div>
         </div>
 
         <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
@@ -522,7 +575,9 @@
             <h3 class="text-xl font-semibold text-gray-800 mb-4 border-b pb-2">分配新任務</h3>
             <form id="new-task-form" class="space-y-4">
               <div><label class="block text-sm font-medium text-gray-700">所屬專案</label>
-                <select id="task-project-id" class="mt-1 block w-full rounded-md border-gray-300 p-2 border">${ projects.length>0 ? projects.map(p=>`<option value="${escapeHtml(p.id)}">${escapeHtml(p.id)} - ${escapeHtml(p.title||p.id)}</option>`).join("") : '<option value="">請先新增專案</option>'}</select>
+                <select id="task-project-id" class="mt-1 block w-full rounded-md border-gray-300 p-2 border">
+                  ${ projects.length>0 ? projects.map(p=>`<option value="${escapeHtml(p.id)}">${escapeHtml(p.title||p.id)}</option>`).join("") : `<option value="">尚無專案</option>` }
+                </select>
               </div>
               <div><label class="block text-sm font-medium text-gray-700">任務名稱</label><input type="text" id="task-name" required class="mt-1 block w-full rounded-md border-gray-300 p-2 border"/></div>
               <div><label class="block text-sm font-medium text-gray-700">分配給</label><select id="task-assignee" required class="mt-1 block w-full rounded-md border-gray-300 p-2 border">${ managerOptionsHtml() }</select></div>
@@ -538,7 +593,7 @@
             <div class="flex space-x-3 mb-4 text-sm">
               <select id="task-filter-manager" class="rounded-md border-gray-300 p-2 border"><option value="">所有負責人</option>${ managerOptionsHtml() }</select>
               <select id="task-filter-status" class="rounded-md border-gray-300 p-2 border">
-                <option value="">所有狀態</option><option value="待辦">待辦</option><option value="進行中">進行中</option><option value="完成">完成</option><option value="更新">即時更新</option>
+                <option value="">所有狀態</option><option value="待辦">待辦</option><option value="進行中">進行中</option><option value="完成">完成</option><option value="更新">更新</option>
               </select>
               <button onclick="renderTaskList()" class="px-3 py-2 bg-gray-100 rounded-lg text-gray-700 hover:bg-gray-200">過濾</button>
             </div>
@@ -559,7 +614,6 @@
       if(!isAuthorized()){ showModal("請先登入","請先登入後再分配任務。"); return; }
 
       const projectId=document.getElementById("task-project-id").value;
-      const projectTitle=projects.find(p=>p.id===projectId)?.title || projectId;
       const taskName=document.getElementById("task-name").value;
       const assignee=document.getElementById("task-assignee").value;
       const dueDate=document.getElementById("task-due-date").value;
@@ -605,11 +659,11 @@
         else if(t.status==="完成"){ badge="bg-green-100 text-green-800"; actionText="已完成"; actionFn=`showModal('已完成','此任務已標記完成，無法再操作。')`; }
         else if(t.status==="更新"){ badge="bg-blue-100 text-blue-800"; actionText="查看詳情"; actionFn=`setView('details','${escapeHtml(t.projectId)}')`; }
         return `
-          <div class="project-card bg-gray-50 p-4 rounded-lg border-l-4 ${ t.status==="待辦"?"border-red-500": t.status==="進行中"?"border-yellow-500": t.status==="完成"?"border-green-500":"border-blue-500"}">
+          <div class="project-card bg-gray-50 p-4 rounded-lg border-l-4 ${ t.status==="待辦"?"border-red-500": t.status==="進行中"?"border-yellow-500": t.status==="完成"?"border-green-500":"border-blue-500" }">
             <div class="flex justify-between items-start">
               <div class="flex-grow">
                 <p class="font-bold text-lg text-gray-900">${escapeHtml(t.taskName||"")}</p>
-                <p class="text-xs text-gray-500">專案: <span class="font-medium text-blue-800 cursor-pointer hover:underline" onclick="setView('details','${escapeHtml(t.projectId)}')">${escapeHtml(project?.title || t.projectId || "")}</span></p>
+                <p class="text-xs text-gray-500">專案: <span class="font-medium text-blue-800 cursor-pointer hover:underline" onclick="setView('details','${escapeHtml(t.projectId)}')">${escapeHtml(project?.title||t.projectId||"")}</span></p>
               </div>
               <span class="px-3 py-1 text-xs font-semibold rounded-full ${badge}">${escapeHtml(t.status||"")}</span>
             </div>
@@ -643,14 +697,14 @@
           <div class="lg:col-span-1 bg-white p-6 rounded-xl shadow-lg h-fit">
             <h3 class="text-xl font-semibold text-gray-800 mb-4 border-b pb-2">新增行事</h3>
             <form id="new-event-form" class="space-y-4">
-              <div><label class="block text-sm font-medium text-gray-700">所屬專案</label><select id="evt-project-id" class="mt-1 block w-full rounded-md border-gray-300 p-2 border">${ projects.length>0 ? projects.map(p=>`<option value="${escapeHtml(p.id)}">${escapeHtml(p.id)} - ${escapeHtml(p.title||p.id)}</option>`).join("") : '<option value="">請先新增專案</option>'}</select></div>
+              <div><label class="block text-sm font-medium text-gray-700">所屬專案</label><select id="evt-project-id" class="mt-1 block w-full rounded-md border-gray-300 p-2 border">${ projects.length>0 ? projects.map(p=>`<option value="${escapeHtml(p.id)}">${escapeHtml(p.title||p.id)}</option>`).join("") : `<option value="">尚無專案</option>` }</select></div>
               <div><label class="block text-sm font-medium text-gray-700">標題</label><input type="text" id="evt-title" required class="mt-1 block w-full rounded-md border-gray-300 p-2 border"/></div>
               <div><label class="block text-sm font-medium text-gray-700">參與者/負責人</label><select id="evt-assignee" class="mt-1 block w-full rounded-md border-gray-300 p-2 border">${ managerOptionsHtml() }</select></div>
               <div class="grid grid-cols-2 gap-4">
                 <div><label class="block text-sm font-medium text-gray-700">開始日期</label><input type="date" id="evt-start" required class="mt-1 block w-full rounded-md border-gray-300 p-2 border"/></div>
                 <div><label class="block text-sm font-medium text-gray-700">結束日期</label><input type="date" id="evt-end" required class="mt-1 block w-full rounded-md border-gray-300 p-2 border"/></div>
               </div>
-              <div><label class="block text-sm font-medium text-gray-700">說明（可選）</label><textarea id="evt-desc" rows="3" class="mt-1 block w-full rounded-md border-gray-300 p-2 border" placeholder="補充說明"></textarea></div>
+              <div><label class="block text-sm font-medium text-gray-700">說明（可選）</label><textarea id="evt-desc" rows="3" class="mt-1 block w-full rounded-md border-gray-300 p-2 border" placeholder="活動說明"></textarea></div>
               <button type="submit" class="w-full py-2 bg-blue-800 text-white rounded-lg hover:bg-blue-700">新增行事</button>
             </form>
             <div id="event-form-feedback" class="mt-4 text-sm font-medium"></div>
@@ -670,7 +724,7 @@
                      extendedProps:{ projectId: ev.projectId, assignee: ev.assignee, description: ev.description||"" } };
           }),
           dateClick:(info)=>{ const s=document.getElementById("evt-start"); const e=document.getElementById("evt-end"); if(s) s.value=info.dateStr; if(e) e.value=info.dateStr; },
-          eventClick:(info)=>{ const ev=info.event; const pId=ev.extendedProps?.projectId||""; const desc=ev.extendedProps?.description||""; showModal(ev.title, `專案: ${pId}\n負責: ${ev.extendedProps?.assignee||""}\n${desc?('說明: '+desc):''}`); }
+          eventClick:(info)=>{ const ev=info.event; const pId=ev.extendedProps?.projectId||""; const desc=ev.extendedProps?.description||""; showModal(ev.title, `專案: ${pId}\n負責: ${ev.extendedProps?.assignee||""}\n說明:\n${desc}`); }
         }); calendarInstance.render();
       }
 
@@ -845,7 +899,7 @@
 
         const ps = projects.map(p=>({ id:p.id, title:p.title||"", manager:p.manager||"", budget:n(p.budget), progress:n(p.progress), status:p.status||"" }));
         const ts = tasks.filter(t=> inRange(t.dueDate||"", start, end)).map(t=>({ id:t.id, projectId:t.projectId||"", taskName:t.taskName||"", assignee:t.assignee||"", dueDate:t.dueDate||"", status:t.status||"" }));
-        const es = events.filter(ev=> overlapsRange(ev.startDate||"", ev.endDate||ev.startDate||"", start, end)).map(ev=>({ id:ev.id, projectId:ev.projectId||"", title:ev.title||"", assignee:ev.assignee||"", startDate:ev.startDate||"", endDate:ev.endDate||ev.startDate||"", description:ev.description||"" }));
+        const es = events.filter(ev=> overlapsRange(ev.startDate||"", ev.endDate||ev.startDate||"", start, end)).map(ev=>({ id:ev.id, projectId:ev.projectId||"", title:ev.title||"", assignee:ev.assignee||"", startDate:ev.startDate||"", endDate:ev.endDate||"", description:ev.description||"" }));
 
         const payload = { action:"ai_summary", mode, start, end, projects:ps, tasks:ts, events:es };
 
@@ -868,6 +922,21 @@
         }
       }
       window.generateAIReport = generateAIReport;
+    }
+
+    // ================== 專案詳情（簡版占位） ==================
+    function renderProjectDetails(projectId){
+      const p = projects.find(x=>x.id===projectId);
+      const c = document.getElementById("main-content");
+      if(!p){ c.innerHTML = `<div class="bg-white p-6 rounded-xl shadow-lg text-gray-600">找不到專案：${escapeHtml(projectId||"")}</div>`; return; }
+      c.innerHTML = `
+        <h2 class="text-3xl font-bold text-gray-800 mb-6 border-b pb-2 flex items-center"><i data-lucide="layout-dashboard" class="w-7 h-7 mr-3 text-blue-800"></i> 專案詳情</h2>
+        <div class="bg-white p-6 rounded-xl shadow-lg">
+          <div class="text-xl font-bold text-gray-900">${escapeHtml(p.title||p.id)}</div>
+          <div class="text-sm text-gray-600 mt-1">負責人：${escapeHtml(p.manager||"未指定")} ｜ 進度：${n(p.progress)}%</div>
+          <div class="mt-4 text-gray-800">此處可擴充更多細節（檔案、花費、里程碑等）。</div>
+        </div>`;
+      if(window.lucide?.createIcons) lucide.createIcons();
     }
 
     // ================== 資訊交流（貼文 + 圖片） ==================
@@ -974,7 +1043,7 @@
                   <div class="text-gray-800 whitespace-pre-wrap mb-3">${escapeHtml(p.text||"")}</div>
                   ${ (p.images||[]).length ? `
                     <div class="grid grid-cols-2 md:grid-cols-3 gap-2">
-                      ${ p.images.map(img=>`<a href="${escapeHtml(img.url)}" target="_blank" class="block"><img src="${escapeHtml(img.url)}" alt="${escapeHtml(img.name||'')}" class="w-full h-32 object-cover rounded-md hover:opacity-90 transition"></a>`).join("") }
+                      ${ p.images.map(img=>`<a href="${escapeHtml(img.url)}" target="_blank" class="block"><img src="${escapeHtml(img.url)}" alt="${escapeHtml(img.name||'')}" class="w-full h-32 object-cover rounded-lg"></a>`).join("") }
                     </div>` : ``}
                 </div>`).join("")}
             </div>
@@ -999,198 +1068,24 @@
             setTimeout(()=>{ progEl.textContent = ""; }, 800);
           }catch(err){
             console.error(err);
-            progEl.textContent = `失敗：${err.message}`;
+            progEl.textContent = "發佈失敗";
+            showModal("錯誤", err?.message||String(err));
           }
         });
       }
     }
 
-    // ================== 專案詳情（含附件） ==================
-    function renderProjectDetails(projectId){
-      const container=document.getElementById("main-content");
-      if(!projects || projects.length===0){
-        container.innerHTML=`
-          <h2 class="text-3xl font-bold text-gray-800 mb-6 border-b pb-2 flex items-center"><i data-lucide="clipboard-list" class="w-7 h-7 mr-3 text-blue-800"></i> 專案詳情</h2>
-          <div class="bg-white p-6 rounded-xl shadow-lg text-center">
-            <i data-lucide="alert-triangle" class="w-10 h-10 text-yellow-500 mx-auto mb-4"></i>
-            <p class="text-gray-700 mb-4">目前沒有任何專案資料。</p>
-            <button onclick="setView('dashboard')" class="px-4 py-2 bg-blue-800 text-white rounded-lg hover:bg-blue-700">回儀表板</button>
-          </div>`;
-        if(window.lucide?.createIcons) lucide.createIcons();
-        return;
-      }
-      if(!projectId){
-        container.innerHTML=`
-          <h2 class="text-3xl font-bold text-gray-800 mb-6 border-b pb-2 flex items-center"><i data-lucide="clipboard-list" class="w-7 h-7 mr-3 text-blue-800"></i> 專案詳情</h2>
-          <div class="bg-white p-6 rounded-xl shadow-lg">
-            <p class="text-gray-700 mb-4">請選擇要查看的專案：</p>
-            <div class="flex items-center gap-3">
-              <select id="details-project-select" class="rounded-md border-gray-300 p-2 border flex-1">
-                ${projects.map(p=>`<option value="${escapeHtml(p.id)}">${escapeHtml(p.id)} - ${escapeHtml(p.title||p.id)}</option>`).join("")}
-              </select>
-              <button id="details-go-btn" class="px-4 py-2 bg-blue-800 text-white rounded-lg hover:bg-blue-700">查看詳情</button>
-            </div>
-          </div>`;
-        if(window.lucide?.createIcons) lucide.createIcons();
-        document.getElementById('details-go-btn')?.addEventListener('click',()=>{
-          const sel=document.getElementById('details-project-select'); const val=sel?.value||null;
-          if(val) setView('details', val);
-        });
-        return;
-      }
-
-      const project=projects.find(p=>p.id===projectId);
-      if(!project){
-        container.innerHTML=`
-          <h2 class="text-3xl font-bold text-gray-800 mb-6 border-b pb-2 flex items-center"><i data-lucide="clipboard-list" class="w-7 h-7 mr-3 text-blue-800"></i> 專案詳情</h2>
-          <div class="bg-white p-6 rounded-xl shadow-lg">
-            <p class="text-red-600 mb-4">找不到專案「${escapeHtml(String(projectId))}」。</p>
-          </div>`;
-        if(window.lucide?.createIcons) lucide.createIcons();
-        return;
-      }
-
-      const progress=Number(project.progress)||0;
-      const barColor=progress>=95?"bg-green-600":(progress<50?"bg-orange-600":"bg-blue-800");
-      const projectFiles=files.filter(f=>f.projectId===projectId);
-
-      container.innerHTML=`
-        <h2 class="text-3xl font-bold text-gray-800 mb-6 border-b pb-2 flex items-center"><i data-lucide="clipboard-list" class="w-7 h-7 mr-3 text-blue-800"></i> 專案詳情: ${escapeHtml(project.title||project.id)}</h2>
-
-        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
-          <div class="lg:col-span-1 bg-white p-6 rounded-xl shadow-lg space-y-3">
-            <h3 class="text-xl font-semibold text-blue-800 mb-4 border-b pb-2">基本資訊</h3>
-            <p class="text-sm"><strong class="text-gray-600">專案編號:</strong> ${escapeHtml(project.id)}</p>
-            <p class="text-sm"><strong class="text-gray-600">專案管理人:</strong> <span class="text-lg font-bold text-green-700">${escapeHtml(project.manager||"")}</span></p>
-            <p class="text-sm"><strong class="text-gray-600">預算概算:</strong> ${fmtMoney(project.budget)}</p>
-            <div class="text-sm text-gray-700 pl-1">
-              <p>・人事費：${fmtMoney(project.personnelBudget||0)}</p>
-              <p>・業務費：${fmtMoney(project.operatingBudget||0)}</p>
-              <p>・設備費：${fmtMoney(project.equipmentBudget||0)}</p>
-            </div>
-          </div>
-
-          <div class="lg:col-span-2 bg-white p-6 rounded-xl shadow-lg">
-            <h3 class="text-xl font-semibold text-blue-800 mb-4 border-b pb-2">流程進度與相關文件</h3>
-            <div class="flex items-center space-x-4 mb-4">
-              <span class="text-gray-600 font-medium">總進度:</span>
-              <div class="flex-grow bg-gray-200 rounded-full h-4">
-                <div class="progress-bar h-4 rounded-full ${barColor}" style="width:${progress}%"></div>
-              </div>
-              <span class="font-bold text-lg ${progress>=95?'text-green-700':'text-blue-800'}">${progress}%</span>
-            </div>
-            <p class="text-sm text-gray-700">目前狀態: <span class="font-medium text-lg text-red-500">${escapeHtml(project.status||"")}</span></p>
-
-            <div class="mt-6">
-              <h4 class="text-md font-semibold text-gray-700">附件上傳</h4>
-              <div class="flex items-center gap-2">
-                <input type="file" id="file-input" multiple class="block w-full text-sm text-gray-700"/>
-                <button id="file-upload-btn" class="px-3 py-2 text-sm bg-blue-800 text-white rounded-lg hover:bg-blue-700">上傳</button>
-              </div>
-              <div id="file-upload-progress" class="text-xs text-gray-600 mt-2"></div>
-
-              <h4 class="text-md font-semibold text-gray-700 mt-4">附件列表</h4>
-              <ul id="file-list" class="list-disc list-inside text-sm text-blue-800 space-y-1 ml-4 mt-2">
-                ${
-                  projectFiles.length
-                  ? projectFiles.map(f=>`
-                      <li>
-                        <a href="${escapeHtml(f.url)}" target="_blank" class="hover:underline">${escapeHtml(f.name)}</a>
-                        <span class="text-gray-500">(${Math.round((Number(f.size)||0)/1024)} KB)</span>
-                        ${ (f.reporterId||"")===currentUserId ? `<button class="ml-2 text-red-600 text-xs hover:underline" onclick="deleteProjectFile('${escapeHtml(f.id)}')">刪除</button>` : "" }
-                      </li>
-                    `).join("")
-                  : '<li class="text-gray-500">尚無附件</li>'
-                }
-              </ul>
-            </div>
-          </div>
-        </div>
-      `;
-      if(window.lucide?.createIcons) lucide.createIcons();
-
-      document.getElementById("file-upload-btn")?.addEventListener("click", async ()=>{
-        const inp=document.getElementById("file-input");
-        const progressEl=document.getElementById("file-upload-progress");
-        const fl=inp?.files;
-
-        if(!fl || fl.length===0){ showModal("未選擇檔案","請先選擇檔案再上傳。"); return; }
-        if(!isAuthorized()){ showModal("請先登入","請先登入後再上傳。"); return; }
-
-        try{
-          progressEl.textContent="上傳中...";
-          await uploadProjectFiles(projectId, fl, (pct, name)=>{ progressEl.textContent=`上傳 ${name}：${pct}%`; });
-          progressEl.textContent="上傳完成。";
-          inp.value="";
-        }catch(err){
-          console.error(err);
-          progressEl.textContent=`上傳失敗：${err.message}`;
-        }
-      });
-    }
-
-    async function uploadProjectFiles(projectId, fileList, onProgress){
-      for(const file of fileList){
-        const safeName = file.name.replace(/[^\w.\-() ]+/g, "_");
-        const storagePath = `artifacts/${APP_ID}/uploads/project_files/${projectId}/${Date.now()}_${safeName}`;
-        const refObj = sRef(storage, storagePath);
-        const task = uploadBytesResumable(refObj, file, {
-          contentType: file.type || "application/octet-stream",
-          customMetadata: { ownerUid: currentUserId }
-        });
-        await new Promise((resolve, reject)=>{
-          task.on("state_changed",
-            snap => { if(onProgress){ const pct = Math.round((snap.bytesTransferred / snap.totalBytes) * 100); onProgress(pct, file.name); } },
-            reject, resolve
-          );
-        });
-        const url = await getDownloadURL(refObj);
-        await addDoc(collection(db, FILES_COLLECTION_PATH), {
-          projectId, name: file.name, size: file.size || 0, contentType: file.type || "",
-          url, storagePath, uploadedAt: serverTimestamp(), reporterId: currentUserId
-        });
-      }
-    }
-    async function deleteProjectFile(fileId){
-      if(!isAuthorized()){ showModal("請先登入","請先登入後再操作。"); return; }
-      const f = files.find(x=>x.id===fileId); if(!f){ showModal("找不到檔案",""); return; }
-      if((f.reporterId||"") !== currentUserId){ showModal("權限限制","僅上傳者可刪除此檔案。"); return; }
-      try{
-        if(f.storagePath){ await deleteObject(sRef(storage, f.storagePath)); }
-        await deleteDoc(doc(db, FILES_COLLECTION_PATH, fileId));
-        showModal("刪除成功", f.name);
-      }catch(err){
-        console.error(err); showModal("錯誤", `刪除檔案失敗：${err.message}`);
-      }
-    }
-    window.deleteProjectFile = deleteProjectFile;
-
-    // 匯出 CSV 共用
-    function arrayToCsv(headers, rows){
-      const esc=(val)=>{ const s=(val===undefined||val===null)?"":String(val); const needQuote=/[",\r\n]/.test(s); const q=s.replace(/"/g,'""'); return needQuote?`"${q}"`:q; };
-      const head=headers.map(esc).join(",");
-      const body=rows.map(r=>headers.map(h=>esc(r[h])).join(",")).join("\r\n");
-      return head+"\r\n"+body;
-    }
-    function triggerDownloadCsv(csvText, filename){
-      const blob=new Blob(["\ufeff"+csvText],{type:"text/csv;charset=utf-8;"}); const url=URL.createObjectURL(blob);
-      const a=document.createElement("a"); a.href=url; a.download=filename; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
-    }
-
-    // 啟動
-    window.addEventListener('DOMContentLoaded', ()=>{
-      showAppShell(false);
-      initFirebase().catch(e=>logDbg('ERR','init failed', e?.message||e));
-      if(window.lucide?.createIcons) lucide.createIcons();
-
-      // 開啟 debug 面板快捷鍵（Ctrl+D）
-      window.addEventListener('keydown', (ev)=>{
-        if((ev.ctrlKey||ev.metaKey) && ev.key.toLowerCase()==='d'){
-          const el=document.getElementById('debug');
-          el.style.display = (el.style.display==='block' ? 'none' : 'block');
-        }
+    // 啟動初始化
+    window.addEventListener('DOMContentLoaded', () => {
+      initFirebase().catch(e=>{
+        logDbg('ERR','initFirebase failed', {code:e?.code, message:e?.message});
+        // 初始化失敗也允許再嘗試（避免鈕永遠 disabled）
+        loginBtn?.removeAttribute('disabled');
       });
     });
+
+    // 首次載入時預設畫面
+    if(window.lucide?.createIcons) lucide.createIcons();
   </script>
 </body>
 </html>

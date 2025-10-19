@@ -111,7 +111,7 @@
         <h1 class="text-3xl font-extrabold text-gray-900 text-center">Welcome back! 歡迎回來！</h1>
         <p class="text-sm text-gray-500 text-center mt-2">使用 Google 帳號登入以進入儀表板</p>
 
-        <!-- 初始化完成前 disabled，避免 auth 尚未就緒觸發 auth/argument-error -->
+        <!-- 初始化完成前 disabled，避免 auth 尚未就緒觸發錯誤 -->
         <button id="btn-landing-login" onclick="signInWithGoogle()" disabled
                 class="mt-6 w-full py-3 rounded-xl bg-blue-800 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold flex items-center justify-center gap-2">
           <img alt="" src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" class="w-5 h-5"/> 使用 Google 登入
@@ -178,16 +178,16 @@
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
     import {
-      initializeAuth,
+      getAuth,
+      setPersistence,
       indexedDBLocalPersistence,
       browserLocalPersistence,
       browserSessionPersistence,
+      inMemoryPersistence,
       GoogleAuthProvider,
       onAuthStateChanged,
-      onIdTokenChanged,
       signInWithRedirect,
       signInWithPopup,
-      browserPopupRedirectResolver,
       getRedirectResult,
       signOut
     } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
@@ -273,7 +273,7 @@
     function showAppShell(show){
       if(show){ landing.classList.add("hidden"); appShell.classList.remove("hidden"); }
       else{ appShell.classList.add("hidden"); landing.classList.remove("hidden"); }
-      if(window.lucide?.createIcons) lucide.createIcons();
+      if(window.lucide?.createIcons) try{ lucide.createIcons(); }catch{}
     }
 
     // 更新使用者 UI
@@ -319,12 +319,10 @@
       }
     }
 
-    // Google 登入（先嘗試 Popup，再回退 Redirect；加入 resolver 並強化防呆）
+    // Google 登入（先 Popup，失敗再 Redirect；加強防呆）
     window.signInWithGoogle = async function(){
       try{
-        if(!auth){
-          await initFirebase().catch(()=>{});
-        }
+        if(!auth){ await initFirebase().catch(()=>{}); }
         if(!auth){
           showModal("初始化中", "驗證服務尚未就緒，請稍候 1～2 秒再試或重新整理。");
           return;
@@ -332,7 +330,6 @@
         const provider = new GoogleAuthProvider();
         provider.setCustomParameters({ prompt: 'select_account' });
 
-        // 先試 Popup（成功率高、回來更快）
         try{
           setDbgState('popup','warn'); logDbg('INFO','signInWithPopup try',{providerId:provider.providerId});
           await signInWithPopup(auth, provider);
@@ -340,15 +337,15 @@
           return;
         }catch(e){
           logDbg('WARN','signInWithPopup failed', {code:e?.code, message:e?.message});
-          // 常見錯誤（快取/瀏覽器阻擋）：再回退 Redirect
         }
 
-        // 回退 Redirect（最穩定）
         setDbgState('redirecting','warn'); logDbg('INFO','signInWithRedirect',{providerId:provider.providerId});
         await signInWithRedirect(auth, provider);
       }catch(e){
         setDbgState('redirect-failed','err'); logDbg('ERR','signInWithGoogle outer catch', {code:e?.code, message:e?.message, hasAuth:!!auth});
         showModal("登入失敗", `${e?.message || String(e)}\n\n請在網址加上 ?debug=1 後重整，再把面板紀錄貼給我協助排查。`);
+        landingLoading?.classList.add("hidden");
+        loginBtn?.removeAttribute('disabled');
       }
     };
 
@@ -368,34 +365,64 @@
       if(main) main.style.marginLeft = nextExpanded ? '240px' : '72px';
       const btn = document.getElementById('btn-toggle');
       if(btn){ btn.innerHTML = nextExpanded ? '<i data-lucide="panel-left-close" class="w-5 h-5"></i>' : '<i data-lucide="panel-left-open" class="w-5 h-5"></i>'; }
-      if(window.lucide?.createIcons) lucide.createIcons();
+      if(window.lucide?.createIcons) try{ lucide.createIcons(); }catch{}
       try{ localStorage.setItem('sidebarExpanded', nextExpanded ? '1' : '0'); }catch{}
     };
 
-    // 初始化 Firebase/Auth（加入 popupRedirectResolver）
+    // 動態選擇持久化策略
+    async function choosePersistence(auth){
+      const candidates = [
+        indexedDBLocalPersistence,
+        browserLocalPersistence,
+        browserSessionPersistence,
+        inMemoryPersistence
+      ];
+      for(const p of candidates){
+        try{
+          await setPersistence(auth, p);
+          logDbg('OK','persistence selected', {name: p.type || (p.toString?.() || 'unknown')});
+          return p;
+        }catch(e){
+          logDbg('WARN','persistence failed', {target:p.type || 'unknown', code:e?.code, message:e?.message});
+        }
+      }
+      return null;
+    }
+
+    // 初始化 Firebase/Auth（getAuth + setPersistence，加入逾時保護）
     async function initFirebase(){
       if(auth) return; // 已初始化就略過
       if(!firebaseConfig){ showModal("設定錯誤","缺少 Firebase 設定"); return; }
 
       const app = initializeApp(firebaseConfig);
 
-      auth = initializeAuth(app, {
-        persistence: [indexedDBLocalPersistence, browserLocalPersistence, browserSessionPersistence],
-        popupRedirectResolver: browserPopupRedirectResolver
+      auth = getAuth(app);
+      auth.languageCode = 'zh-TW';
+
+      // 先掛監聽，再做還原/redirect 結果處理
+      let authStateResolved = false;
+      const done = ()=>{ authStateResolved = true; landingLoading?.classList.add("hidden"); loginBtn?.removeAttribute('disabled'); };
+
+      onAuthStateChanged(auth, (user) => {
+        logDbg('INFO','onAuthStateChanged', !!user ? 'user present' : 'no user');
+        applyUser(user);
+        done();
       });
-      db = getFirestore(app);
-      storage = getStorage(app);
 
-      // 正在還原登入狀態時顯示提示
+      // 啟用持久化（逐一嘗試）
+      await choosePersistence(auth);
+
+      // 顯示還原中
       landingLoading?.classList.remove("hidden");
-      setDbgState('restoring','warn'); logDbg('INFO','init: restoring...');
+      setDbgState('restoring','warn'); logDbg('INFO','init: restoring...', {ua: navigator.userAgent});
 
-      // 先處理 redirect 結果，再掛監聽（避免競態）
+      // 處理 redirect 結果（若有）
       try{
         const rr = await getRedirectResult(auth);
         if(rr?.user){
           logDbg('OK','getRedirectResult user', {uid:rr.user.uid, email:rr.user.email});
           applyUser(rr.user);
+          done();
         }else{
           logDbg('INFO','getRedirectResult empty');
         }
@@ -403,18 +430,15 @@
         logDbg('ERR','getRedirectResult error', {code:e?.code, message:e?.message});
       }
 
-      onAuthStateChanged(auth, (user) => {
-        landingLoading?.classList.add("hidden");
-        logDbg('INFO','onAuthStateChanged', !!user ? 'user present' : 'no user');
-        applyUser(user);
-        // 初始化完成：啟用登入按鈕
-        loginBtn?.removeAttribute('disabled');
-      });
-
-      onIdTokenChanged(auth, (user) => {
-        logDbg('INFO','onIdTokenChanged', !!user ? 'user present' : 'no user');
-        if(user && !currentUserId) applyUser(user);
-      });
+      // 逾時保護（避免卡在「還原中」）
+      setTimeout(()=>{
+        if(!authStateResolved){
+          logDbg('WARN','restore-timeout','no auth state after 8s');
+          landingLoading?.classList.add("hidden");
+          loginBtn?.removeAttribute('disabled');
+          setDbgState('timeout','warn');
+        }
+      }, 8000);
     }
 
     function isAuthorized(){ return !!currentUserId; }
@@ -430,7 +454,7 @@
       document.querySelectorAll('#app-sidebar .nav-item').forEach(el=>{
         el.classList.toggle('active', el.getAttribute('data-view') === view);
       });
-      if(window.lucide?.createIcons) lucide.createIcons();
+      if(window.lucide?.createIcons) try{ lucide.createIcons(); }catch{}
     }
     window.setView=function(view,arg){
       currentView=view; setActiveByView(view);
@@ -519,7 +543,7 @@
       c.innerHTML=`
         <h2 class="text-3xl font-bold text-gray-800 mb-6 border-b pb-2 flex items-center"><i data-lucide="layout-dashboard" class="w-7 h-7 mr-3 text-blue-800"></i>專案儀表板</h2>
         ${ isBoot && !listenersStarted ? `<div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8 animate-pulse">
-          ${[1,2,3].map(()=>`<div class="bg-white p-6 rounded-xl shadow-lg"><div class="h-6 bg-gray-200 rounded w-1/3 mb-4"></div><div class="h-8 bg-gray-200 rounded w-1/2"></div></div>`).join("")}
+          ${[1,2,3].map(()=>`<div class="bg-gray-100 p-6 rounded-xl"><div class="h-6 bg-gray-200 rounded w-1/3 mb-4"></div><div class="h-8 bg-gray-200 rounded w-1/2"></div></div>`).join("")}
         </div>`:"" }
 
         <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
@@ -565,7 +589,7 @@
         </div>
 
         <div class="bg-white p-6 rounded-xl shadow-lg">
-          ${ totalProjects===0 ? `
+          ${ empty ? `
             <div class="text-center py-10">
               <i data-lucide="alert-triangle" class="w-10 h-10 text-yellow-500 mx-auto mb-4"></i>
               <p class="text-lg text-gray-600">目前沒有專案資料。</p>
@@ -577,7 +601,7 @@
           `}
         </div>
       `;
-      if(window.lucide?.createIcons) lucide.createIcons();
+      if(window.lucide?.createIcons) try{ lucide.createIcons(); }catch{}
     }
 
     // ================== 任務 ==================
@@ -603,7 +627,7 @@
             <div id="task-form-feedback" class="mt-4 text-sm font-medium"></div>
           </div>
 
-          <div class="lg:col-span-2 bg白 p-6 rounded-xl shadow-lg">
+          <div class="lg:col-span-2 bg-white p-6 rounded-xl shadow-lg">
             <h3 class="text-xl font-semibold text-gray-800 mb-4 border-b pb-2">所有任務追蹤</h3>
 
             <div class="flex space-x-3 mb-4 text-sm">
@@ -618,7 +642,7 @@
           </div>
         </div>
       `;
-      if(window.lucide?.createIcons) lucide.createIcons();
+      if(window.lucide?.createIcons) try{ lucide.createIcons(); }catch{}
 
       document.getElementById("new-task-form")?.addEventListener("submit", handleNewTaskSubmission);
       renderTaskList();
@@ -686,11 +710,11 @@
             <div class="mt-2 text-sm text-gray-700 flex justify-between items-center">
               <p><i data-lucide="user" class="w-4 h-4 inline mr-1"></i> 負責人: <span class="font-medium">${escapeHtml(t.assignee||"")}</span>
                  <span class="ml-4"><i data-lucide="calendar" class="w-4 h-4 inline mr-1"></i> 期限: ${escapeHtml(t.dueDate||"")}</span></p>
-              <button onclick="${actionFn}" class="px-3 py-1 text-xs rounded-lg text白 ${ t.status!=="更新" ? "bg-green-600 hover:bg-green-700" : "bg-blue-600 hover:bg-blue-700"}">${actionText}</button>
+              <button onclick="${actionFn}" class="px-3 py-1 text-xs rounded-lg text-white ${ t.status!=="更新" ? "bg-green-600 hover:bg-green-700" : "bg-blue-600 hover:bg-blue-700"}">${actionText}</button>
             </div>
           </div>`;
       }).join("");
-      if(window.lucide?.createIcons) lucide.createIcons();
+      if(window.lucide?.createIcons) try{ lucide.createIcons(); }catch{}
     }
 
     async function updateTaskStatus(taskId, newStatus){
@@ -709,8 +733,8 @@
       c.innerHTML=`
         <h2 class="text-3xl font-bold text-gray-800 mb-6 border-b pb-2 flex items-center"><i data-lucide="calendar" class="w-7 h-7 mr-3 text-blue-800"></i> 行事曆</h2>
         <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <div class="lg:col-span-2 bg白 p-4 rounded-xl shadow-lg"><div id="calendar"></div></div>
-          <div class="lg:col-span-1 bg白 p-6 rounded-xl shadow-lg h-fit">
+          <div class="lg:col-span-2 bg-white p-4 rounded-xl shadow-lg"><div id="calendar"></div></div>
+          <div class="lg:col-span-1 bg-white p-6 rounded-xl shadow-lg h-fit">
             <h3 class="text-xl font-semibold text-gray-800 mb-4 border-b pb-2">新增行事</h3>
             <form id="new-event-form" class="space-y-4">
               <div><label class="block text-sm font-medium text-gray-700">所屬專案</label><select id="evt-project-id" class="mt-1 block w-full rounded-md border-gray-300 p-2 border">${ projects.length>0 ? projects.map(p=>`<option value="${escapeHtml(p.id)}">${escapeHtml(p.title||p.id)}</option>`).join("") : `<option value="">尚無專案</option>` }</select></div>
@@ -721,12 +745,12 @@
                 <div><label class="block text-sm font-medium text-gray-700">結束日期</label><input type="date" id="evt-end" required class="mt-1 block w-full rounded-md border-gray-300 p-2 border"/></div>
               </div>
               <div><label class="block text-sm font-medium text-gray-700">說明（可選）</label><textarea id="evt-desc" rows="3" class="mt-1 block w-full rounded-md border-gray-300 p-2 border" placeholder="活動說明"></textarea></div>
-              <button type="submit" class="w-full py-2 bg-blue-800 text白 rounded-lg hover:bg-blue-700">新增行事</button>
+              <button type="submit" class="w-full py-2 bg-blue-800 text-white rounded-lg hover:bg-blue-700">新增行事</button>
             </form>
             <div id="event-form-feedback" class="mt-4 text-sm font-medium"></div>
           </div>
         </div>`;
-      if(window.lucide?.createIcons) lucide.createIcons();
+      if(window.lucide?.createIcons) try{ lucide.createIcons(); }catch{}
 
       const calEl=document.getElementById("calendar");
       if(calEl && window.FullCalendar){
@@ -775,7 +799,7 @@
       c.innerHTML=`
         <h2 class="text-3xl font-bold text-gray-800 mb-6 border-b pb-2 flex items-center"><i data-lucide="file-text" class="w-7 h-7 mr-3 text-blue-800"></i> 報告與下載</h2>
 
-        <div class="bg白 p-6 rounded-xl shadow-lg">
+        <div class="bg-white p-6 rounded-xl shadow-lg">
           <h3 class="text-xl font-semibold text-gray-800 mb-4 border-b pb-2">匯出設定</h3>
 
           <form id="report-form" class="space-y-4">
@@ -796,25 +820,25 @@
               <label class="inline-flex items-center text-sm text-gray-700"><input type="checkbox" id="report-all" class="mr-2" checked />全部（不篩選日期）</label>
 
               <button type="button" id="btn-preview" class="px-3 py-2 bg-gray-100 hover:bg-gray-200 rounded-lg text-gray-800 flex items-center"><i data-lucide="eye" class="w-4 h-4 mr-1"></i> 預覽</button>
-              <button type="button" id="btn-download" class="px-3 py-2 bg-blue-800 hover:bg-blue-700 rounded-lg text白 flex items-center"><i data-lucide="download" class="w-4 h-4 mr-1"></i> 下載 CSV</button>
+              <button type="button" id="btn-download" class="px-3 py-2 bg-blue-800 hover:bg-blue-700 rounded-lg text-white flex items-center"><i data-lucide="download" class="w-4 h-4 mr-1"></i> 下載 CSV</button>
             </div>
           </form>
 
           <div id="report-preview" class="mt-6"></div>
         </div>
 
-        <div class="mt-8 bg白 p-6 rounded-xl shadow-lg">
+        <div class="mt-8 bg-white p-6 rounded-xl shadow-lg">
           <h3 class="text-xl font-semibold text-gray-800 mb-2 border-b pb-2">AI 專案彙整報導</h3>
           <div class="flex items-center gap-3 mb-3">
-            <button type="button" id="btn-ai-week" class="px-3 py-2 bg-purple-600 hover:bg-purple-700 text白 rounded-lg">生成本週報導</button>
-            <button type="button" id="btn-ai-month" class="px-3 py-2 bg-purple-600 hover:bg-purple-700 text白 rounded-lg">生成本月報導</button>
+            <button type="button" id="btn-ai-week" class="px-3 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg">生成本週報導</button>
+            <button type="button" id="btn-ai-month" class="px-3 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg">生成本月報導</button>
             <button type="button" id="btn-ai-download" class="px-3 py-2 bg-gray-100 hover:bg-gray-200 text-gray-800 rounded-lg" disabled>下載 Markdown</button>
           </div>
           <pre id="ai-summary-box" class="whitespace-pre-wrap text-sm text-gray-800 bg-gray-50 p-3 rounded-lg overflow-x-auto"></pre>
         </div>
       `;
 
-      if(window.lucide?.createIcons) lucide.createIcons();
+      if(window.lucide?.createIcons) try{ lucide.createIcons(); }catch{}
 
       const allEl   = document.getElementById("report-all");
       const startEl = document.getElementById("report-start");
@@ -889,7 +913,7 @@
           <div class="overflow-x-auto mt-3">
             <table class="min-w-full divide-y divide-gray-200">
               <thead class="bg-gray-50"><tr>${headers.map(h=>`<th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">${escapeHtml(h)}</th>`).join("")}</tr></thead>
-              <tbody class="bg白 divide-y divide-gray-200 text-sm">
+              <tbody class="bg-white divide-y divide-gray-200 text-sm">
                 ${ sample.map(r=>`<tr>${headers.map(h=>`<td class="px-3 py-2 whitespace-nowrap">${escapeHtml(String(r[h]??""))}</td>`).join("")}</tr>`).join("") }
               </tbody>
             </table>
@@ -944,15 +968,15 @@
     function renderProjectDetails(projectId){
       const p = projects.find(x=>x.id===projectId);
       const c = document.getElementById("main-content");
-      if(!p){ c.innerHTML = `<div class="bg白 p-6 rounded-xl shadow-lg text-gray-600">找不到專案：${escapeHtml(projectId||"")}</div>`; return; }
+      if(!p){ c.innerHTML = `<div class="bg-white p-6 rounded-xl shadow-lg text-gray-600">找不到專案：${escapeHtml(projectId||"")}</div>`; return; }
       c.innerHTML = `
         <h2 class="text-3xl font-bold text-gray-800 mb-6 border-b pb-2 flex items-center"><i data-lucide="layout-dashboard" class="w-7 h-7 mr-3 text-blue-800"></i> 專案詳情</h2>
-        <div class="bg白 p-6 rounded-xl shadow-lg">
+        <div class="bg-white p-6 rounded-xl shadow-lg">
           <div class="text-xl font-bold text-gray-900">${escapeHtml(p.title||p.id)}</div>
           <div class="text-sm text-gray-600 mt-1">負責人：${escapeHtml(p.manager||"未指定")} ｜ 進度：${n(p.progress)}%</div>
           <div class="mt-4 text-gray-800">此處可擴充更多細節（檔案、花費、里程碑等）。</div>
         </div>`;
-      if(window.lucide?.createIcons) lucide.createIcons();
+      if(window.lucide?.createIcons) try{ lucide.createIcons(); }catch{}
     }
 
     // ================== 資訊交流（貼文 + 圖片） ==================
@@ -1020,7 +1044,7 @@
 
         <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <div class="lg:col-span-1">
-            <div class="bg白 p-5 rounded-xl shadow-lg">
+            <div class="bg-white p-5 rounded-xl shadow-lg">
               <h3 class="text-lg font-semibold text-gray-800 mb-3">發佈貼文</h3>
               ${ canPost ? `
                 <form id="post-form" class="space-y-3">
@@ -1029,12 +1053,12 @@
                     <input type="file" id="post-images" accept="image/*" multiple class="block w-full text-sm text-gray-700"/>
                     <div id="post-upload-progress" class="text-xs text-gray-600 mt-1"></div>
                   </div>
-                  <button type="submit" class="w-full py-2 bg-blue-800 text白 rounded-lg hover:bg-blue-700">發佈</button>
+                  <button type="submit" class="w-full py-2 bg-blue-800 text-white rounded-lg hover:bg-blue-700">發佈</button>
                 </form>
               ` : `
                 <div class="text-sm text-gray-600">
                   請先登入後即可發佈貼文。
-                  <button onclick="signInWithGoogle()" class="ml-2 px-3 py-1 text白 bg-blue-800 rounded-md">使用 Google 登入</button>
+                  <button onclick="signInWithGoogle()" class="ml-2 px-3 py-1 text-white bg-blue-800 rounded-md">使用 Google 登入</button>
                 </div>
               `}
             </div>
@@ -1043,9 +1067,9 @@
           <div class="lg:col-span-2">
             <div id="post-feed" class="space-y-4">
               ${ communityPosts.length===0 ? `
-                <div class="bg白 p-6 rounded-xl shadow-lg text-center text-gray-500">目前沒有貼文，成為第一個分享的人吧！</div>
+                <div class="bg-white p-6 rounded-xl shadow-lg text-center text-gray-500">目前沒有貼文，成為第一個分享的人吧！</div>
               ` : communityPosts.map(p=>`
-                <div class="bg白 p-5 rounded-xl shadow-lg">
+                <div class="bg-white p-5 rounded-xl shadow-lg">
                   <div class="flex items-center mb-3">
                     <div class="w-9 h-9 rounded-full bg-gray-200 overflow-hidden mr-3">
                       ${ p.authorPhotoURL ? `<img src="${escapeHtml(p.authorPhotoURL)}" alt="" class="w-full h-full object-cover">` : '' }
@@ -1066,7 +1090,7 @@
           </div>
         </div>
       `;
-      if(window.lucide?.createIcons) lucide.createIcons();
+      if(window.lucide?.createIcons) try{ lucide.createIcons(); }catch{}
 
       const form=document.getElementById("post-form");
       if(form){
@@ -1096,12 +1120,13 @@
       initFirebase().catch(e=>{
         logDbg('ERR','initFirebase failed', {code:e?.code, message:e?.message});
         // 初始化失敗也允許再嘗試（避免鈕永遠 disabled）
+        landingLoading?.classList.add("hidden");
         loginBtn?.removeAttribute('disabled');
       });
     });
 
     // 首次載入時預設畫面
-    if(window.lucide?.createIcons) lucide.createIcons();
+    if(window.lucide?.createIcons) try{ lucide.createIcons(); }catch{}
   </script>
 </body>
 </html>

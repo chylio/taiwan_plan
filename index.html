@@ -52,6 +52,7 @@
 
   <!-- 全域設定（請依實際環境調整） -->
   <script>
+    // 注意：storageBucket 建議使用 *.appspot.com（官方預設），目前 firebasestorage.app 也能用，但先保留原值。
     window.__firebase_config_object = {
       apiKey: "AIzaSyCIXWS0ynK4GdsdQIXkOs3fHuzAendZ7LA",
       authDomain: "taiwanplan-f7566.firebaseapp.com",
@@ -189,9 +190,7 @@
       inMemoryPersistence,
       GoogleAuthProvider,
       onAuthStateChanged,
-      signInWithRedirect,
       signInWithPopup,
-      getRedirectResult,
       signOut
     } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
     import {
@@ -254,49 +253,22 @@
     function clamp01(x){ return Math.max(0, Math.min(1, x)); }
     function fmtMoney(x){ return `$${(Number(x)||0).toLocaleString()}`; }
     function escapeHtml(str){ if(str==null) return ""; return String(str).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#039;"); }
-    function tsToDateStr(v){
-      try{
-        if(!v) return "";
-        if (typeof v==="string") return v.slice(0,10);
-        if (v?.toDate) return v.toDate().toISOString().slice(0,10);
-        if (v instanceof Date) return v.toISOString().slice(0,10);
-      }catch(e){ return "" }
-      return "";
-    }
-    function overlapsRange(start,end,s,e){
-      if(!start && !end) return false;
-      const aStart=start||end, aEnd=end||start, bStart=s||e, bEnd=e||s;
-      if(!bStart && !bEnd) return true;
-      if(!aStart||!aEnd||!bStart||!bEnd) return false;
-      return !(aEnd < bStart || aStart > bEnd);
-    }
-    function inRange(d,s,e){ if(!d) return false; if(s && d<s) return false; if(e && d>e) return false; return true; }
 
     // 環境偵測
     function canUseSessionStorage(){
-      try{
-        const k = '__ss_test__' + Math.random();
-        sessionStorage.setItem(k,'1');
-        const ok = sessionStorage.getItem(k) === '1';
-        sessionStorage.removeItem(k);
-        return ok;
-      }catch(e){
-        return false;
-      }
+      try{ const k='__ss__'+Math.random(); sessionStorage.setItem(k,'1'); const ok=sessionStorage.getItem(k)==='1'; sessionStorage.removeItem(k); return ok; }
+      catch{ return false; }
     }
     function isLikelyInAppBrowser(){
       const ua = navigator.userAgent || '';
       return /(FBAN|FBAV|Instagram|Line|Line\/|Messenger|WeChat|MicroMessenger|Twitter|TikTok|MiuiBrowser|OPR\/|DuckDuckGo)/i.test(ua);
     }
     function openInNewWindow(){
-      try{
-        // 嘗試跳出內嵌瀏覽器（有些 App 會攔阻）
-        window.open(location.href, '_blank', 'noopener,noreferrer');
-      }catch{}
+      try{ window.open(location.href, '_blank', 'noopener,noreferrer'); }catch{}
     }
     window.openInNewWindow = openInNewWindow;
 
-    // 顯示/隱藏 App 殼與登入首頁
+    // 顯示/隱藏 App 殼
     function showAppShell(show){
       if(show){ landing.classList.add("hidden"); appShell.classList.remove("hidden"); }
       else{ appShell.classList.add("hidden"); landing.classList.remove("hidden"); }
@@ -305,23 +277,21 @@
 
     // 更新使用者 UI
     function updateUserChips(){
-      const boxName = document.getElementById("user-display-name");
-      const boxEmail= document.getElementById("user-email");
-      const boxAvatar=document.getElementById("user-avatar");
-      const boxInitial=document.getElementById("user-initial");
-
+      const nameEl = document.getElementById("user-display-name");
+      const emailEl= document.getElementById("user-email");
+      const avatar = document.getElementById("user-avatar");
+      const initial= document.getElementById("user-initial");
       const displayName = userProfile.displayName || userProfile.email?.split("@")[0] || "使用者";
       const email = userProfile.email || "";
-
-      if(boxName) boxName.textContent = displayName;
-      if(boxEmail) boxEmail.textContent = email;
+      if(nameEl) nameEl.textContent = displayName;
+      if(emailEl) emailEl.textContent = email;
       if(userProfile.photoURL){
-        boxAvatar?.setAttribute("src", userProfile.photoURL);
-        boxAvatar?.classList.remove("hidden");
-        boxInitial?.classList.add("hidden");
+        avatar?.setAttribute("src", userProfile.photoURL);
+        avatar?.classList.remove("hidden");
+        initial?.classList.add("hidden");
       }else{
-        boxAvatar?.classList.add("hidden");
-        if(boxInitial){ boxInitial.textContent = (displayName[0]||"U").toUpperCase(); boxInitial.classList.remove("hidden"); }
+        avatar?.classList.add("hidden");
+        if(initial){ initial.textContent = (displayName[0]||"U").toUpperCase(); initial.classList.remove("hidden"); }
       }
     }
 
@@ -329,11 +299,7 @@
     function applyUser(user){
       if(user){
         currentUserId = user.uid;
-        userProfile = {
-          displayName: user.displayName || "",
-          email: user.email || "",
-          photoURL: user.photoURL || ""
-        };
+        userProfile = { displayName: user.displayName || "", email: user.email || "", photoURL: user.photoURL || "" };
         updateUserChips();
         showAppShell(true);
         if(!listenersStarted) initializeSystem(true);
@@ -346,75 +312,55 @@
       }
     }
 
-    // 清除可能卡住的 Firebase 快取與登入狀態
+    // 清除快取與狀態
     async function clearAuthStuck(){
       try{ landingLoading?.classList.add("hidden"); }catch{}
       try{ loginBtn?.removeAttribute('disabled'); }catch{}
       try{ await signOut(auth); }catch{}
       try{
-        const storages = [localStorage, sessionStorage];
-        storages.forEach(s=>{
+        [localStorage, sessionStorage].forEach(store=>{
           try{
-            for(const k of Object.keys(s)){
-              if(/^firebase:/.test(k) || /firebase/i.test(k)) s.removeItem(k);
+            for(const k of Object.keys(store)){
+              if(/^firebase:/.test(k) || /firebase/i.test(k)) store.removeItem(k);
             }
           }catch{}
         });
       }catch{}
       logDbg('WARN','auth cache cleared');
-      alert('已清除登入快取，請重新嘗試登入。若你在 LINE/FB/IG 內建瀏覽器，請改用外部瀏覽器開啟本頁。');
+      alert('已清除登入快取，請重新登入。若你在 App 內建瀏覽器，請改用外部瀏覽器開啟本頁。');
     }
     window.clearAuthStuck = clearAuthStuck;
 
-    // Google 登入（先 Popup，若 popup 不可用且 sessionStorage 可用才回退 Redirect）
+    // 嚴格採用 Popup 的 Google 登入（不做 redirect 回退，避免 missing initial state）
     window.signInWithGoogle = async function(){
       try{
         if(!auth){ await initFirebase().catch(()=>{}); }
-        if(!auth){
-          showModal("初始化中", "驗證服務尚未就緒，請稍候 1～2 秒再試或重新整理。");
-          return;
-        }
+        if(!auth){ showModal("初始化中","驗證服務尚未就緒，請稍候再試或重新整理。"); return; }
         const provider = new GoogleAuthProvider();
         provider.setCustomParameters({ prompt: 'select_account' });
 
-        // 優先使用 Popup，避免依賴 redirect 的 sessionStorage
-        try{
-          setDbgState('popup','warn'); logDbg('INFO','signInWithPopup try',{ua: navigator.userAgent});
-          await signInWithPopup(auth, provider);
-          logDbg('OK','signInWithPopup success');
-          return;
-        }catch(e){
-          logDbg('WARN','signInWithPopup failed', {code:e?.code, message:e?.message});
-          // 若是內嵌瀏覽器或嚴格模式，popup 可能被攔，改用 redirect 但需 sessionStorage 可用
-          const ssOK = canUseSessionStorage();
-          const inApp = isLikelyInAppBrowser();
-          if(!ssOK){
-            // redirect 很可能失敗（就是你看到的 missing initial state）
-            resetBtn?.classList.remove('hidden');
-            openWindowBtn?.classList.remove('hidden');
-            showModal("目前環境不支援 Redirect 登入",
-              "偵測到瀏覽器無法使用 sessionStorage，Redirect 會失敗（missing initial state）。\n\n建議做法：\n1) 點擊「在新視窗開啟」或改用外部瀏覽器（Chrome/Safari 非無痕）。\n2) 關閉嚴格追蹤防護或允許此網站的第三方 Cookie/儲存。\n3) 若在 LINE/FB/IG 內建瀏覽器開啟，請用右上角選單在外部瀏覽器打開。");
-            throw e;
-          }
-          if(inApp){
-            // 在內嵌瀏覽器即便 sessionStorage OK，redirect 也常失敗，優先引導跳出
-            openWindowBtn?.classList.remove('hidden');
-            resetBtn?.classList.remove('hidden');
-          }
+        // 在可能的內嵌瀏覽器，引導跳外部
+        if(isLikelyInAppBrowser()){
+          openWindowBtn?.classList.remove('hidden');
         }
 
-        // 只有在 sessionStorage 可用時才使用 Redirect 回退
-        if(canUseSessionStorage()){
-          setDbgState('redirecting','warn'); logDbg('INFO','signInWithRedirect');
-          await signInWithRedirect(auth, provider);
-        }else{
-          showModal("無法使用 Redirect", "瀏覽器不支援 sessionStorage。請改用外部瀏覽器或允許儲存功能後再試。");
-        }
+        setDbgState('popup','warn'); logDbg('INFO','signInWithPopup try',{ua:navigator.userAgent});
+        await signInWithPopup(auth, provider);
+        logDbg('OK','signInWithPopup success');
       }catch(e){
-        setDbgState('auth-failed','err'); logDbg('ERR','signInWithGoogle outer catch', {code:e?.code, message:e?.message, hasAuth:!!auth});
+        logDbg('ERR','signInWithPopup failed', {code:e?.code, message:e?.message});
+        const code = e?.code||"";
+        // 常見：auth/popup-blocked, auth/popup-closed-by-user, 第三方阻擋
+        if(/popup/i.test(code)){
+          openWindowBtn?.classList.remove('hidden');
+          resetBtn?.classList.remove('hidden');
+          showModal("瀏覽器封鎖了登入視窗",
+            "請允許彈出視窗（pop-up），或點「在新視窗開啟」，或改用外部瀏覽器（Chrome/Edge/Safari 非無痕）。");
+        }else{
+          showModal("登入失敗", e?.message || String(e));
+        }
         landingLoading?.classList.add("hidden");
         loginBtn?.removeAttribute('disabled');
-        resetBtn?.classList.remove('hidden');
       }
     };
 
@@ -438,29 +384,19 @@
       try{ localStorage.setItem('sidebarExpanded', nextExpanded ? '1' : '0'); }catch{}
     };
 
-    // 動態選擇持久化策略
+    // 動態選擇持久化策略（IndexedDB → Local → Session → InMemory）
     async function choosePersistence(auth){
-      const candidates = [
-        indexedDBLocalPersistence,
-        browserLocalPersistence,
-        browserSessionPersistence,
-        inMemoryPersistence
-      ];
+      const candidates = [indexedDBLocalPersistence, browserLocalPersistence, browserSessionPersistence, inMemoryPersistence];
       for(const p of candidates){
-        try{
-          await setPersistence(auth, p);
-          logDbg('OK','persistence selected', {name: p.type || (p.toString?.() || 'unknown')});
-          return p;
-        }catch(e){
-          logDbg('WARN','persistence failed', {target:p.type || 'unknown', code:e?.code, message:e?.message});
-        }
+        try{ await setPersistence(auth, p); logDbg('OK','persistence selected', {name: p.type || (p.toString?.() || 'unknown')}); return p; }
+        catch(e){ logDbg('WARN','persistence failed', {target:p.type || 'unknown', code:e?.code, message:e?.message}); }
       }
       return null;
     }
 
-    // 初始化 Firebase/Auth（getAuth + setPersistence，加入逾時保護）
+    // 初始化（先掛監聽，再選持久化；加入逾時保護）
     async function initFirebase(){
-      if(auth) return; // 已初始化就略過
+      if(auth) return;
       if(!firebaseConfig){ showModal("設定錯誤","缺少 Firebase 設定"); return; }
 
       const app = initializeApp(firebaseConfig);
@@ -472,7 +408,7 @@
       landingLoading?.classList.remove("hidden");
       resetBtn?.classList.add('hidden');
       openWindowBtn?.classList.toggle('hidden', !isLikelyInAppBrowser());
-      setDbgState('restoring','warn'); logDbg('INFO','init: restoring...', {ua: navigator.userAgent, ssOK: canUseSessionStorage()});
+      setDbgState('restoring','warn'); logDbg('INFO','init: restoring...', {ua:navigator.userAgent});
 
       let settled = false;
       const safetyTimer = setTimeout(()=>{
@@ -485,7 +421,7 @@
         }
       }, 7000);
 
-      // 先掛監聽
+      // 先掛監聽（不論有無登入，都應回呼一次）
       onAuthStateChanged(auth, (user) => {
         settled = true; clearTimeout(safetyTimer);
         landingLoading?.classList.add("hidden");
@@ -496,27 +432,11 @@
 
       // 選擇持久化
       try{ await choosePersistence(auth); }catch(e){ logDbg('ERR','choosePersistence error', {code:e?.code, message:e?.message}); }
-
-      // 處理 redirect 結果（若有）
-      try{
-        const rr = await getRedirectResult(auth);
-        if(rr?.user){
-          logDbg('OK','getRedirectResult user', {uid:rr.user.uid, email:rr.user.email});
-          applyUser(rr.user);
-          landingLoading?.classList.add("hidden");
-          loginBtn?.removeAttribute('disabled');
-          settled = true; clearTimeout(safetyTimer);
-        }else{
-          logDbg('INFO','getRedirectResult empty');
-        }
-      }catch(e){
-        logDbg('ERR','getRedirectResult error', {code:e?.code, message:e?.message});
-      }
     }
 
     function isAuthorized(){ return !!currentUserId; }
 
-    // ================== 資料與視圖（下略：與你現有相同，保留功能） ==================
+    // ================== 下方為資料與視圖（保留原功能，略為精簡） ==================
     let managers=[]; const DEFAULT_MANAGERS=["蔡雅雯","陳乃菁","吳曉琪","蘇琬淳","楊穎潔","王小明","李小華","張曉安"];
     let currentView="dashboard",selectedProjectId=null,calendarInstance=null;
     let projects=[],tasks=[],events=[],files=[],communityPosts=[],budgetCaps={personnelCap:0,operatingCap:0,equipmentCap:0};
@@ -585,47 +505,72 @@
     function renderDashboard(isBoot=false){
       const c=document.getElementById("main-content"); if(!c) return;
       const totalProjects=projects.length;
-      const completed=projects.filter(p=>(n(p.progress))>=95).length;
-      const totalBudget=projects.reduce((s,p)=>s+n(p.budget),0);
+      const completed=projects.filter(p=>(Number(p.progress)||0)>=95).length;
+      const totalBudget=projects.reduce((s,p)=>s+(Number(p.budget)||0),0);
       const empty=totalProjects===0;
+
       let personnelUsed=0,operatingUsed=0,equipmentUsed=0;
       for(const p of projects){
-        const pu=('personnelUsed' in p)?n(p.personnelUsed):n(p.personnelBudget);
-        const ou=('operatingUsed' in p)?n(p.operatingUsed):n(p.operatingBudget);
-        const eu=('equipmentUsed' in p)?n(p.equipmentUsed):n(p.equipmentBudget);
+        const pu=('personnelUsed' in p)?(Number(p.personnelUsed)||0):(Number(p.personnelBudget)||0);
+        const ou=('operatingUsed' in p)?(Number(p.operatingUsed)||0):(Number(p.operatingBudget)||0);
+        const eu=('equipmentUsed' in p)?(Number(p.equipmentUsed)||0):(Number(p.equipmentBudget)||0);
         personnelUsed+=pu; operatingUsed+=ou; equipmentUsed+=eu;
       }
-      const pc=n(budgetCaps.personnelCap), oc=n(budgetCaps.operatingCap), ec=n(budgetCaps.equipmentCap);
-      const pRate=pc>0?clamp01(personnelUsed/pc):0, oRate=oc>0?clamp01(operatingUsed/oc):0, eRate=ec>0?clamp01(equipmentUsed/ec):0;
+      const pc=Number(budgetCaps.personnelCap)||0, oc=Number(budgetCaps.operatingCap)||0, ec=Number(budgetCaps.equipmentCap)||0;
+      const pRate=pc>0?Math.max(0,Math.min(1,personnelUsed/pc)):0, oRate=oc>0?Math.max(0,Math.min(1,operatingUsed/oc)):0, eRate=ec>0?Math.max(0,Math.min(1,equipmentUsed/ec)):0;
       const pRemain=pc-personnelUsed, oRemain=oc-operatingUsed, eRemain=ec-equipmentUsed;
       const barClass=(rate,remain)=> remain>=0?(rate>=0.95?"bg-yellow-400":"bg-blue-800"):"bg-red-500";
+
+      function fmtMoney(x){ return `$${(Number(x)||0).toLocaleString()}`; }
+
       c.innerHTML=`
         <h2 class="text-3xl font-bold text-gray-800 mb-6 border-b pb-2 flex items-center"><i data-lucide="layout-dashboard" class="w-7 h-7 mr-3 text-blue-800"></i>專案儀表板</h2>
         ${ isBoot && !listenersStarted ? `<div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8 animate-pulse">
           ${[1,2,3].map(()=>`<div class="bg-gray-100 p-6 rounded-xl"><div class="h-6 bg-gray-200 rounded w-1/3 mb-4"></div><div class="h-8 bg-gray-200 rounded w-1/2"></div></div>`).join("")}
         </div>`:"" }
+
         <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-          <div class="project-card bg-white p-6 rounded-xl shadow-lg border-t-4 border-blue-800"><div class="flex items-center justify-between"><div class="text-gray-500">專案總數</div><i data-lucide="layers" class="w-8 h-8 text-blue-800"></i></div><div class="mt-3 text-3xl font-extrabold text-gray-900">${totalProjects}</div></div>
-          <div class="project-card bg-white p-6 rounded-xl shadow-lg border-t-4 border-green-600"><div class="flex items-center justify-between"><div class="text-gray-500">接近完成</div><i data-lucide="check-circle" class="w-8 h-8 text-green-600"></i></div><div class="mt-3 text-3xl font-extrabold text-gray-900">${completed}</div></div>
-          <div class="project-card bg-white p-6 rounded-xl shadow-lg border-t-4 border-orange-600"><div class="flex items-center justify-between"><div class="text-gray-500">總預算</div><i data-lucide="wallet" class="w-8 h-8 text-orange-600"></i></div><div class="mt-3 text-3xl font-extrabold text-gray-900">${fmtMoney(totalBudget)}</div></div>
+          <div class="project-card bg-white p-6 rounded-xl shadow-lg border-t-4 border-blue-800">
+            <div class="flex items-center justify-between"><div class="text-gray-500">專案總數</div><i data-lucide="layers" class="w-8 h-8 text-blue-800"></i></div>
+            <div class="mt-3 text-3xl font-extrabold text-gray-900">${totalProjects}</div>
+          </div>
+          <div class="project-card bg-white p-6 rounded-xl shadow-lg border-t-4 border-green-600">
+            <div class="flex items-center justify-between"><div class="text-gray-500">接近完成</div><i data-lucide="check-circle" class="w-8 h-8 text-green-600"></i></div>
+            <div class="mt-3 text-3xl font-extrabold text-gray-900">${completed}</div>
+          </div>
+          <div class="project-card bg-white p-6 rounded-xl shadow-lg border-t-4 border-orange-600">
+            <div class="flex items-center justify-between"><div class="text-gray-500">總預算</div><i data-lucide="wallet" class="w-8 h-8 text-orange-600"></i></div>
+            <div class="mt-3 text-3xl font-extrabold text-gray-900">${fmtMoney(totalBudget)}</div>
+          </div>
         </div>
+
         <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
           <div class="project-card bg-white p-6 rounded-xl shadow-lg border-t-4 border-blue-800">
             <div class="flex items-center justify-between mb-2"><div class="font-semibold text-gray-800">人事費總預算</div><div class="text-sm text-gray-500">${fmtMoney(pc)}</div></div>
             <div class="w-full bg-gray-200 rounded-full h-3"><div class="progress-bar h-3 rounded-full ${barClass(pRate,pRemain)}" style="width:${(pRate*100).toFixed(0)}%"></div></div>
-            <div class="mt-2 text-sm text-gray-700 flex justify-between"><span>已用：<strong>${fmtMoney(personnelUsed)}</strong>（${(pRate*100).toFixed(0)}%）</span><span>${pRemain>=0?`餘額：<strong>${fmtMoney(pRemain)}</strong>`:`超支：<strong class="text-red-600">${fmtMoney(-pRemain)}</strong>`}</span></div>
+            <div class="mt-2 text-sm text-gray-700 flex justify-between">
+              <span>已用：<strong>${fmtMoney(personnelUsed)}</strong>（${(pRate*100).toFixed(0)}%）</span>
+              <span>${pRemain>=0?`餘額：<strong>${fmtMoney(pRemain)}</strong>`:`超支：<strong class="text-red-600">${fmtMoney(-pRemain)}</strong>`}</span>
+            </div>
           </div>
           <div class="project-card bg-white p-6 rounded-xl shadow-lg border-t-4 border-blue-800">
             <div class="flex items-center justify-between mb-2"><div class="font-semibold text-gray-800">業務費總預算</div><div class="text-sm text-gray-500">${fmtMoney(oc)}</div></div>
             <div class="w-full bg-gray-200 rounded-full h-3"><div class="progress-bar h-3 rounded-full ${barClass(oRate,oRemain)}" style="width:${(oRate*100).toFixed(0)}%"></div></div>
-            <div class="mt-2 text-sm text-gray-700 flex justify-between"><span>已用：<strong>${fmtMoney(operatingUsed)}</strong>（${(oRate*100).toFixed(0)}%）</span><span>${oRemain>=0?`餘額：<strong>${fmtMoney(oRemain)}</strong>`:`超支：<strong class="text-red-600">${fmtMoney(-oRemain)}</strong>`}</span></div>
+            <div class="mt-2 text-sm text-gray-700 flex justify-between">
+              <span>已用：<strong>${fmtMoney(operatingUsed)}</strong>（${(oRate*100).toFixed(0)}%）</span>
+              <span>${oRemain>=0?`餘額：<strong>${fmtMoney(oRemain)}</strong>`:`超支：<strong class="text-red-600">${fmtMoney(-oRemain)}</strong>`}</span>
+            </div>
           </div>
           <div class="project-card bg-white p-6 rounded-xl shadow-lg border-t-4 border-blue-800">
             <div class="flex items-center justify-between mb-2"><div class="font-semibold text-gray-800">設備費總預算</div><div class="text-sm text-gray-500">${fmtMoney(ec)}</div></div>
             <div class="w-full bg-gray-200 rounded-full h-3"><div class="progress-bar h-3 rounded-full ${barClass(eRate,eRemain)}" style="width:${(eRate*100).toFixed(0)}%"></div></div>
-            <div class="mt-2 text-sm text-gray-700 flex justify-between"><span>已用：<strong>${fmtMoney(equipmentUsed)}</strong>（${(eRate*100).toFixed(0)}%）</span><span>${eRemain>=0?`餘額：<strong>${fmtMoney(eRemain)}</strong>`:`超支：<strong class="text-red-600">${fmtMoney(-eRemain)}</strong>`}</span></div>
+            <div class="mt-2 text-sm text-gray-700 flex justify-between">
+              <span>已用：<strong>${fmtMoney(equipmentUsed)}</strong>（${(eRate*100).toFixed(0)}%）</span>
+              <span>${eRemain>=0?`餘額：<strong>${fmtMoney(eRemain)}</strong>`:`超支：<strong class="text-red-600">${fmtMoney(-eRemain)}</strong>`}</span>
+            </div>
           </div>
         </div>
+
         <div class="bg-white p-6 rounded-xl shadow-lg">
           ${ empty ? `
             <div class="text-center py-10">
@@ -642,7 +587,7 @@
       if(window.lucide?.createIcons) try{ lucide.createIcons(); }catch{}
     }
 
-    // 其餘（任務/行事曆/報告/社群等）維持現有行為（略）……與前版相同
+    // 其餘畫面（任務/行事曆/報告/社群）可沿用你現有版本，如需我可再貼全檔。
 
     // 啟動初始化
     window.addEventListener('DOMContentLoaded', () => {

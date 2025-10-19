@@ -5,18 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>深耕計畫專案管理儀表板</title>
 
-  <!-- CSP：擴充常用來源，避免 Storage/頭像/Google 登入被擋 -->
   <meta http-equiv="Content-Security-Policy"
         content="default-src 'self';
-                 script-src 'self' 'unsafe-inline'
-                            https://www.gstatic.com
-                            https://*.gstatic.com
-                            https://cdn.tailwindcss.com
-                            https://unpkg.com
-                            https://cdn.jsdelivr.net
-                            https://www.google.com
-                            https://*.google.com
-                            https://apis.google.com;
+                 script-src 'self' 'unsafe-inline' https://www.gstatic.com https://cdn.tailwindcss.com https://unpkg.com https://cdn.jsdelivr.net;
                  connect-src 'self'
                               https://firestore.googleapis.com
                               https://identitytoolkit.googleapis.com
@@ -25,23 +16,15 @@
                               https://*.googleapis.com
                               https://apis.google.com
                               https://*.gstatic.com
-                              https://accounts.google.com
                               https://firebasestorage.googleapis.com
-                              https://*.firebasestorage.app
                               https://content-firebaseappcheck.googleapis.com
                               https://script.google.com
                               https://script.googleusercontent.com
                               https://*.logic.azure.com
                               https://*.azure-apim.net;
-                 img-src 'self' data: https: https://*.googleusercontent.com https://*.firebasestorage.app;
+                 img-src 'self' data: https:;
                  style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net;
-                 frame-src 'self'
-                           https://www.google.com
-                           https://*.google.com
-                           https://www.gstatic.com
-                           https://*.gstatic.com
-                           https://accounts.google.com
-                           https://apis.google.com;
+                 frame-src 'self';
                  object-src 'none';
                  base-uri 'self';">
 
@@ -51,7 +34,7 @@
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/main.min.css">
   <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/index.global.min.js"></script>
 
-  <!-- 專案設定（請依你的 Firebase 專案調整） -->
+  <!-- 專案設定 -->
   <script>
     window.__firebase_config_object = {
       apiKey: "AIzaSyCIXWS0ynK4GdsdQIXkOs3fHuzAendZ7LA",
@@ -62,201 +45,142 @@
       appId: "1:874700126533:web:5461432d0169b7de6ee62c"
     };
     window.__app_id = "taiwanplan-f7566";
-    window.__sharepoint_flow_url = ""; // 可填入 Power Automate HTTP Trigger
-    window.__ai_summary_webapp_url = ""; // 可填入 Apps Script WebApp 產生摘要
+    // 若只允許預先建立帳號，改為 false 會隱藏註冊按鈕
+    window.__ALLOW_SIGNUP = true;
+
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: { sans: ["Inter", "Noto Sans TC", "sans-serif"] },
+          colors: { "primary-blue":"#1e40af", "secondary-green":"#059669", "accent-orange":"#ea580c" }
+        }
+      }
+    }
   </script>
 
   <style>
     .project-card{box-shadow:0 4px 6px -1px rgba(0,0,0,.1),0 2px 4px -1px rgba(0,0,0,.06);transition:transform .2s}
     .project-card:hover{transform:translateY(-2px)}
     .progress-bar{transition:width .5s ease-in-out}
-    #app-sidebar{overflow:hidden}
-    #app-sidebar.expanded{width:240px!important}
-    #app-sidebar.collapsed{width:72px!important}
-    #app-sidebar .nav-item{display:flex;align-items:center;gap:.75rem;width:100%;padding:.5rem .5rem;border-radius:.75rem;color:#e5e7eb;transition:background-color .15s,color .15s}
-    #app-sidebar .nav-item:hover{background-color:rgba(255,255,255,.08);color:#fff}
-    #app-sidebar .nav-item.active{background-color:rgba(59,130,246,.18);color:#fff}
-    #app-sidebar .nav-icon{width:22px;height:22px;stroke-width:2.2}
-    #app-sidebar .nav-label{display:inline;white-space:nowrap;font-weight:600;font-size:.875rem}
-    #app-sidebar.collapsed .nav-label{display:none}
-    #app-main{transition:margin-left .2s ease}
-    .landing-bg{
-      background: radial-gradient(1200px 600px at 85% 85%, #7c3aed30, transparent 60%),
-                  radial-gradient(1000px 500px at 0% 100%, #ec489930, transparent 55%),
-                  linear-gradient(180deg, #ffffff 0%, #f7f7fb 100%);
-    }
-    #debug{position:fixed;right:8px;bottom:8px;background:#111827;color:#e5e7eb;border-radius:10px;max-width:48rem;width:calc(100vw - 16px);font:12px/1.4 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Courier New", monospace;display:none}
-    #debug header{display:flex;justify-content:space-between;align-items:center;padding:6px 10px;border-bottom:1px solid #374151}
-    #debug pre{margin:0;padding:8px 10px;max-height:40vh;overflow:auto;white-space:pre-wrap}
-    #debug .pill{background:#374151;color:#9ca3af;border-radius:20px;padding:2px 8px;margin-left:6px;font-size:11px}
-    #debug .ok{color:#10b981} #debug .warn{color:#f59e0b} #debug .err{color:#ef4444}
-
-    /* In-App Browser Overlay */
-    #inapp-overlay{position:fixed;inset:0;z-index:60;background:rgba(17,24,39,.85);color:#e5e7eb;display:none}
-    #inapp-card{max-width:30rem;margin:10vh auto;background:#111827;border:1px solid #374151;border-radius:14px;padding:18px}
-    .action-btn{display:inline-flex;align-items:center;gap:.4rem;border-radius:10px;padding:.5rem .8rem}
-    .btn-blue{background:#2563eb;color:#fff}
-    .btn-gray{background:#374151;color:#e5e7eb}
-    .link{color:#2563eb;cursor:pointer}
-    .link:hover{text-decoration:underline}
-    .disabled{opacity:.6;cursor:not-allowed}
-
-    /* 全域狀態列（顯示 Firestore/登入錯誤） */
-    #status-banner{position:fixed;left:16px;right:16px;bottom:16px;z-index:50;border-radius:12px;padding:10px 12px;display:none}
-
-    /* 簡易彈窗 */
+    #app-sidebar { overflow: hidden; }
+    #app-sidebar.expanded { width: 240px !important; }
+    #app-sidebar.collapsed { width: 72px !important; }
+    #app-sidebar .nav-item{display:flex;align-items:center;gap:.75rem;width:100%;padding:.5rem .5rem;border-radius:.75rem;color:#e5e7eb;transition: background-color .15s, color .15s}
+    #app-sidebar .nav-item:hover{ background-color: rgba(255,255,255,.08); color:#fff; }
+    #app-sidebar .nav-item.active{ background-color: rgba(59,130,246,.18); color:#fff; }
+    #app-sidebar .nav-icon{ width:22px; height:22px; stroke-width:2.2; }
+    #app-sidebar svg{ stroke: currentColor; }
+    #app-sidebar .nav-label{ display:inline; white-space:nowrap; font-weight:600; font-size:.875rem; }
+    #app-sidebar.collapsed .nav-label{ display:none; }
+    #app-main{ transition: margin-left .2s ease; }
+    /* Modal */
     .modal-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;z-index:70}
-    .modal-card{background:#fff;border-radius:14px;max-width:46rem;width:calc(100vw - 24px);padding:16px}
-    .form-row{display:flex;gap:.75rem}
-    .form-row>*{flex:1}
-    .table{width:100%;border-collapse:collapse}
-    .table th,.table td{border-bottom:1px solid #e5e7eb;padding:.5rem .6rem;text-align:left}
-    .chip{display:inline-block;padding:.15rem .5rem;border-radius:999px;font-size:.75rem}
-    .btn{display:inline-flex;align-items:center;gap:.4rem;padding:.45rem .75rem;border-radius:.6rem}
-    .btn-primary{background:#1e40af;color:#fff}
-    .btn-gray{background:#f3f4f6}
-    .btn-danger{background:#fee2e2;color:#991b1b}
-    .card{background:#fff;border-radius:14px;box-shadow:0 1px 2px rgba(0,0,0,.05);padding:14px}
+    .modal-card{background:#fff;border-radius:14px;max-width:28rem;width:calc(100vw - 24px);padding:16px}
   </style>
 </head>
-<body class="bg-gray-50 font-sans min-h-screen">
+<body class="bg-gray-50 font-sans flex min-h-screen">
 
-  <!-- 登入首頁 -->
-  <section id="landing" class="landing-bg min-h-screen flex items-center justify-center px-4">
-    <div class="max-w-md w-full">
-      <div class="text-center mb-6">
-        <div class="inline-flex items-center gap-2 text-2xl font-extrabold text-blue-800">
-          <i data-lucide="sparkles" class="w-6 h-6"></i> 深耕計畫 PM
-        </div>
-      </div>
-
-      <div class="bg-white/90 backdrop-blur rounded-2xl shadow-2xl p-8">
-        <h1 class="text-3xl font-extrabold text-gray-900 text-center">Welcome back! 歡迎回來！</h1>
-        <p class="text-sm text-gray-500 text-center mt-2">請選擇登入方式</p>
-
-        <button id="btn-google" onclick="signInWithGoogle()" disabled
-                class="mt-4 w-full py-3 rounded-xl bg-blue-800 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold flex items-center justify-center gap-2">
-          <img alt="" src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" class="w-5 h-5"/> 使用 Google 登入
+  <!-- 側欄 -->
+  <aside id="app-sidebar" class="fixed inset-y-2 left-2 z-10 rounded-2xl bg-black text-white shadow-2xl flex flex-col justify-between py-3 transition-all duration-200 expanded" style="width:240px;">
+    <div class="w-full">
+      <div class="flex items-center justify-between px-3 mb-2">
+        <button class="w-10 h-10 rounded-xl bg-gradient-to-br from-pink-500 via-purple-500 to-indigo-500 shadow-md" title="Home" onclick="setView('dashboard')"></button>
+        <button id="btn-toggle" class="p-2 rounded-lg hover:bg-white/10" title="收合/展開" onclick="toggleSidebar()">
+          <i data-lucide="panel-left-close" class="nav-icon"></i>
         </button>
-
-        <div class="mt-6">
-          <div class="text-center text-sm text-gray-500 mb-2">或使用 Email 登入</div>
-          <form id="email-form" class="space-y-3">
-            <input id="email" type="email" required placeholder="Email" class="w-full border rounded-lg p-2 border-gray-300"/>
-            <input id="password" type="password" required placeholder="密碼（至少 6 碼）" class="w-full border rounded-lg p-2 border-gray-300"/>
-            <div class="flex gap-2">
-              <button id="btn-email-signin" type="submit" class="flex-1 py-2 rounded-lg bg-gray-900 text-white">Email 登入</button>
-              <button id="btn-email-signup" type="button" class="flex-1 py-2 rounded-lg bg-gray-100">註冊</button>
-            </div>
-            <div class="text-right">
-              <button id="btn-reset" type="button" class="text-xs text-blue-700 underline">忘記密碼</button>
-            </div>
-            <div id="email-msg" class="text-sm"></div>
-          </form>
-        </div>
-
-        <div class="flex items-center justify-between mt-3 text-xs text-gray-600">
-          <div id="landing-loading" class="hidden">登入狀態還原中，請稍候…</div>
-          <div class="space-x-3">
-            <button id="btn-auth-reset" class="hidden link" onclick="clearAuthStuck()">清除登入狀態</button>
-            <button id="btn-open-window" class="hidden link" onclick="openInNewWindow()">在新視窗開啟</button>
-          </div>
-        </div>
       </div>
-
-      <p class="text-xs text-gray-400 text-center mt-6">本網站使用 Firebase Auth；登入後方能讀取/寫入資料。</p>
+      <nav class="w-full flex flex-col items-stretch space-y-1 px-1">
+        <button class="nav-item group" data-view="dashboard" title="Home" onclick="setView('dashboard')">
+          <i data-lucide="house" class="nav-icon"></i><span class="nav-label">Home</span>
+        </button>
+        <button class="nav-item group" data-view="tasks" title="Planner" onclick="setView('tasks')">
+          <i data-lucide="calendar-days" class="nav-icon"></i><span class="nav-label">Planner</span>
+        </button>
+        <button class="nav-item group" data-view="calendar" title="行事曆" onclick="setView('calendar')">
+          <i data-lucide="calendar" class="nav-icon"></i><span class="nav-label">行事曆</span>
+        </button>
+        <button class="nav-item group" data-view="report" title="Brain" onclick="setView('report')">
+          <i data-lucide="brain" class="nav-icon"></i><span class="nav-label">Brain</span>
+        </button>
+        <button class="nav-item group" data-view="community" title="資訊交流" onclick="setView('community')">
+          <i data-lucide="messages-square" class="nav-icon"></i><span class="nav-label">資訊交流</span>
+        </button>
+        <button class="nav-item group" data-view="details" title="專案詳情" onclick="setView('details')">
+          <i data-lucide="layout-dashboard" class="nav-icon"></i><span class="nav-label">專案詳情</span>
+        </button>
+      </nav>
     </div>
-  </section>
 
-  <!-- In-App Browser Overlay -->
-  <div id="inapp-overlay" aria-hidden="true">
-    <div id="inapp-card">
-      <div class="text-lg font-bold mb-1">請在外部瀏覽器開啟以使用 Google 登入</div>
-      <div class="text-sm text-gray-300">
-        偵測到目前是 App 內建瀏覽器（LINE/FB/IG 等），Google 登入會被封鎖（403: disallowed_useragent）。<br/>
-        你仍可使用「Email 登入」；若要用 Google 登入，請改在外部瀏覽器開啟本頁。
+    <div class="w-full flex flex-col items-stretch space-y-1 px-1">
+      <div id="user-box" class="flex items-center gap-2 px-2 py-2 rounded-lg bg-white/10 mx-1 hidden">
+        <div class="w-8 h-8 rounded-full bg-gray-200 overflow-hidden flex-shrink-0">
+          <img id="user-avatar" alt="" class="w-full h-full object-cover hidden">
+          <div id="user-initial" class="w-full h-full flex items-center justify-center text-black/70 font-bold text-sm"></div>
+        </div>
+        <div class="min-w-0">
+          <div id="user-display-name" class="text-sm font-semibold truncate"></div>
+          <div id="user-email" class="text-xs opacity-80 truncate"></div>
+        </div>
       </div>
-      <ul class="text-sm text-gray-200 list-disc pl-6 mt-3 space-y-1">
-        <li>點右上角或分享選單，選「在瀏覽器中開啟」（iOS: Safari；Android: Chrome）。</li>
-        <li>或點下方「在新視窗開啟」；若仍在 App 內，請手動複製網址到外部瀏覽器。</li>
-      </ul>
-      <div class="mt-4 flex gap-2">
-        <button class="action-btn btn-blue" onclick="openInNewWindow()"><i data-lucide='external-link' class='w-4 h-4'></i>在新視窗開啟</button>
-        <button class="action-btn btn-gray" onclick="copyUrl()"><i data-lucide='clipboard' class='w-4 h-4'></i>複製本站網址</button>
+
+      <button id="btn-signin" class="nav-item group" title="Email 登入" onclick="openAuthModal()">
+        <i data-lucide="log-in" class="nav-icon"></i><span class="nav-label">登入</span>
+      </button>
+      <button id="btn-signout" class="nav-item group hidden" title="登出" onclick="appSignOut()">
+        <i data-lucide="log-out" class="nav-icon"></i><span class="nav-label">登出</span>
+      </button>
+    </div>
+  </aside>
+
+  <!-- 主內容 -->
+  <main id="app-main" class="flex-grow p-8" style="margin-left:240px;">
+    <div id="main-content" class="w-full"></div>
+  </main>
+
+  <!-- 一般提示 Modal -->
+  <div id="custom-modal" class="fixed inset-0 bg-gray-900 bg-opacity-75 z-50 hidden items-center justify-center">
+    <div class="bg-white rounded-xl p-6 w-full max-w-sm shadow-2xl transform transition-all duration-300 scale-95 opacity-0" id="modal-content-wrapper">
+      <h3 id="modal-title" class="text-xl font-bold mb-4 text-primary-blue">提示</h3>
+      <p id="modal-message" class="text-gray-700 mb-6"></p>
+      <div class="flex justify-end space-x-3">
+        <button id="modal-confirm-btn" class="px-4 py-2 bg-primary-blue text-white rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500">確認</button>
       </div>
     </div>
   </div>
 
-  <!-- 應用殼 -->
-  <div id="app-shell" class="hidden">
-    <aside id="app-sidebar" class="fixed inset-y-2 left-2 z-10 rounded-2xl bg-black text-white shadow-2xl flex flex-col justify-between py-3 transition-all duration-200 expanded" style="width:240px;">
-      <div class="w-full">
-        <div class="flex items-center justify-between px-3 mb-2">
-          <button class="w-10 h-10 rounded-xl bg-gradient-to-br from-pink-500 via-purple-500 to-indigo-500 shadow-md" title="Home" onclick="setView('dashboard')"></button>
-          <button id="btn-toggle" class="p-2 rounded-lg hover:bg-white/10" title="收合/展開" onclick="toggleSidebar()">
-            <i data-lucide="panel-left-close" class="w-5 h-5"></i>
-          </button>
-        </div>
-        <nav class="w-full flex flex-col items-stretch space-y-1 px-1">
-          <button class="nav-item group" data-view="dashboard" onclick="setView('dashboard')"><i data-lucide="house" class="nav-icon"></i><span class="nav-label">Home</span></button>
-          <button class="nav-item group" data-view="tasks" onclick="setView('tasks')"><i data-lucide="clipboard-check" class="nav-icon"></i><span class="nav-label">任務</span></button>
-          <button class="nav-item group" data-view="calendar" onclick="setView('calendar')"><i data-lucide="calendar" class="nav-icon"></i><span class="nav-label">行事曆</span></button>
-          <button class="nav-item group" data-view="report" onclick="setView('report')"><i data-lucide="file-text" class="nav-icon"></i><span class="nav-label">報告</span></button>
-          <button class="nav-item group" data-view="community" onclick="setView('community')"><i data-lucide="messages-square" class="nav-icon"></i><span class="nav-label">資訊交流</span></button>
-          <button class="nav-item group" data-view="details" onclick="setView('details')"><i data-lucide="layout-dashboard" class="nav-icon"></i><span class="nav-label">專案詳情</span></button>
-        </nav>
+  <!-- Email/Password 登入 Modal -->
+  <div id="auth-modal" class="modal-backdrop hidden">
+    <div class="modal-card">
+      <div class="flex items-center justify-between mb-3">
+        <div class="text-lg font-bold">Email 登入</div>
+        <button class="px-2 py-1 bg-gray-100 rounded" onclick="closeAuthModal()">關閉</button>
       </div>
-      <div class="w-full flex flex-col items-stretch space-y-1 px-1">
-        <div id="user-box" class="flex items-center gap-2 px-2 py-2 rounded-lg bg-white/10 mx-1">
-          <div class="w-8 h-8 rounded-full bg-gray-200 overflow-hidden flex-shrink-0">
-            <img id="user-avatar" alt="" class="w-full h-full object-cover hidden">
-            <div id="user-initial" class="w-full h-full flex items-center justify-center text-black/70 font-bold text-sm">U</div>
-          </div>
-          <div class="min-w-0">
-            <div id="user-display-name" class="text-sm font-semibold truncate"></div>
-            <div id="user-email" class="text-xs opacity-80 truncate"></div>
-          </div>
+      <div class="space-y-3">
+        <div>
+          <label class="text-sm text-gray-600">Email</label>
+          <input id="auth-email" type="email" class="w-full border rounded-lg p-2" placeholder="you@example.com">
         </div>
-        <button id="btn-signout" class="nav-item group" onclick="appSignOut()">
-          <i data-lucide="log-out" class="nav-icon"></i><span class="nav-label">登出</span>
-        </button>
+        <div>
+          <label class="text-sm text-gray-600">密碼</label>
+          <input id="auth-pass" type="password" class="w-full border rounded-lg p-2" placeholder="至少 6 碼">
+        </div>
+        <div id="auth-msg" class="text-sm h-5"></div>
+        <div class="flex flex-wrap gap-2">
+          <button class="btn-primary px-3 py-2 rounded bg-primary-blue text-white" onclick="handleEmailSignIn()">登入</button>
+          <button id="btn-auth-signup" class="btn px-3 py-2 rounded bg-gray-100" onclick="handleEmailSignUp()">註冊</button>
+          <button class="btn px-3 py-2 rounded bg-gray-100" onclick="handlePasswordReset()">忘記密碼</button>
+        </div>
       </div>
-    </aside>
-
-    <main id="app-main" class="flex-grow p-8" style="margin-left:240px;">
-      <div id="status-banner" class="bg-yellow-100 text-yellow-900 border border-yellow-300"></div>
-      <div id="main-content" class="w-full"></div>
-    </main>
-  </div>
-
-  <!-- Debug 面板（網址加 ?debug=1 開啟） -->
-  <div id="debug">
-    <header>
-      <div>Auth Debug<span id="dbg-state" class="pill">init</span></div>
-      <button style="color:#9ca3af" onclick="document.getElementById('debug').style.display='none'">✕</button>
-    </header>
-    <pre id="dbg-log"></pre>
+    </div>
   </div>
 
   <!-- App 腳本 -->
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+    import { initializeAppCheck, ReCaptchaV3Provider } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app-check.js";
     import {
-      getAuth,
-      setPersistence,
-      indexedDBLocalPersistence,
-      browserLocalPersistence,
-      browserSessionPersistence,
-      inMemoryPersistence,
-      GoogleAuthProvider,
-      onAuthStateChanged,
-      signInWithPopup,
-      signInWithRedirect,
-      getRedirectResult,
-      signOut,
-      createUserWithEmailAndPassword,
-      signInWithEmailAndPassword,
-      sendPasswordResetEmail
+      getAuth, onAuthStateChanged, signOut,
+      createUserWithEmailAndPassword, signInWithEmailAndPassword, sendPasswordResetEmail
     } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
     import {
       getFirestore, doc, addDoc, setDoc, updateDoc, deleteDoc,
@@ -268,28 +192,18 @@
 
     setLogLevel('error');
 
-    // ============ Debug ============
-    const debugMode = /[?&]debug=1/.test(location.search);
-    const dbgEl = document.getElementById('debug');
-    const dbgLogEl = document.getElementById('dbg-log');
-    const dbgStateEl = document.getElementById('dbg-state');
-    if (debugMode) dbgEl.style.display='block';
-    function logDbg(type, msg, obj){
-      if(!debugMode) return;
-      const now = new Date().toISOString().slice(11,19);
-      dbgLogEl.textContent += `[${now}] [${type}] ${msg}${obj?`: ${typeof obj==='string'?obj:JSON.stringify(obj)}`:''}\n`;
-      dbgLogEl.scrollTop = dbgLogEl.scrollHeight;
-    }
-    function setDbgState(s, cls){ if(!debugMode) return; dbgStateEl.textContent = s; dbgStateEl.className = 'pill ' + (cls||''); }
-
-    // ============ 全域 ============
+    // 全域狀態
     let db, auth, storage;
     let currentUserId = "";
+    let isAuthReady = false;
     let listenersStarted = false;
     let userProfile = { displayName:"", email:"", photoURL:"" };
 
+    // 設定
     const APP_ID = window.__app_id || "default-app-id";
     const firebaseConfig = window.__firebase_config_object || null;
+    const APP_CHECK_SITE_KEY = window.__app_check_site_key || "";
+    const ALLOW_SIGNUP = window.__ALLOW_SIGNUP !== false;
 
     // Firestore 路徑
     const PROJECTS_COLLECTION_PATH = `artifacts/${APP_ID}/public/data/project_metadata`;
@@ -300,1190 +214,923 @@
     const MANAGERS_COLLECTION_PATH = `artifacts/${APP_ID}/public/settings/project_managers`;
     const COMMUNITY_COLLECTION_PATH= `artifacts/${APP_ID}/public/community/posts`;
 
-    // DOM
-    const landing = document.getElementById("landing");
-    const landingLoading=document.getElementById("landing-loading");
-    const appShell = document.getElementById("app-shell");
-    const btnGoogle = document.getElementById('btn-google');
-    const resetBtn = document.getElementById('btn-auth-reset');
-    const openWindowBtn = document.getElementById('btn-open-window');
-    const inAppOverlay = document.getElementById('inapp-overlay');
+    const DEFAULT_MANAGERS = ["蔡雅雯","陳乃菁","吳曉琪","蘇琬淳","楊穎潔","王小明","李小華","張曉安"];
+    let managers = [];
+    let currentView = "dashboard";
+    let projects = [];
+    let tasks = [];
+    let events = [];
+    let files = [];
+    let communityPosts = [];
+    let budgetCaps = { personnelCap: 0, operatingCap: 0, equipmentCap: 0 };
+    let selectedProjectId = null;
+    let calendarInstance = null;
 
-    const emailForm = document.getElementById('email-form');
-    const emailInput= document.getElementById('email');
-    const passInput = document.getElementById('password');
-    const emailMsg  = document.getElementById('email-msg');
-
-    const statusBanner = document.getElementById('status-banner');
-
-    // ============ 小工具 ============
-    function showModal(title, message){ alert((title||"提示") + (message?("\n\n" + message):"")); }
+    // 工具
+    function escapeHtml(str){ if(str==null) return ""; return String(str).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#039;"); }
+    function showModal(title, message){
+      const t=document.getElementById("modal-title"), m=document.getElementById("modal-message"), modal=document.getElementById("custom-modal"), w=document.getElementById("modal-content-wrapper");
+      t.textContent=title||"提示"; m.textContent=message||""; document.getElementById("modal-confirm-btn").onclick=()=>{w.classList.remove("scale-100","opacity-100");w.classList.add("scale-95","opacity-0");setTimeout(()=>modal.classList.add("hidden"),300);};
+      modal.classList.remove("hidden"); modal.classList.add("flex"); setTimeout(()=>{w.classList.remove("scale-95","opacity-0"); w.classList.add("scale-100","opacity-100");},50);
+    }
     function n(v){ return Number(v)||0; }
+    function clamp01(x){ return Math.max(0, Math.min(1, x)); }
     function fmtMoney(x){ return `$${(Number(x)||0).toLocaleString()}`; }
+    function managerOptionsHtml(selected = ""){
+      const list = (managers.length>0 ? managers.map(m=>m.name).filter(Boolean) : DEFAULT_MANAGERS);
+      return list.map(m => `<option value="${escapeHtml(m)}" ${m===selected?'selected':''}>${escapeHtml(m)}</option>`).join("");
+    }
     function tsToDateStr(v){
+      try{ if(!v) return ""; if(typeof v==="string") return v.slice(0,10); if(v?.toDate) return v.toDate().toISOString().slice(0,10); if(v instanceof Date) return v.toISOString().slice(0,10); return ""; }catch{ return ""; }
+    }
+    function overlapsRange(start, end, s, e){
+      if(!start && !end) return false; const aStart=start||end; const aEnd=end||start; const bStart=s||e; const bEnd=e||s;
+      if(!bStart && !bEnd) return true; if(!aStart||!aEnd||!bStart||!bEnd) return false; return (aStart<=bEnd)&&(bStart<=aEnd);
+    }
+    function inRange(d, s, e){ if(!d) return false; if(s && d < s) return false; if(e && d > e) return false; return true; }
+    function arrayToCsv(headers, rows){
+      const esc = (val)=>{ const s = (val===undefined || val===null) ? "" : String(val); const needQuote = /[",\r\n]/.test(s); const q = s.replace(/"/g, '""'); return needQuote ? `"${q}"` : q; };
+      const head = headers.map(esc).join(","); const body = rows.map(r => headers.map(h => esc(r[h])).join(",")).join("\r\n"); return head + "\r\n" + body;
+    }
+    function triggerDownloadCsv(csvText, filename){
+      const blob = new Blob(["\ufeff" + csvText], { type: "text/csv;charset=utf-8;" });
+      const url = URL.createObjectURL(blob); const a = document.createElement("a"); a.href = url; a.download = filename; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+    }
+    function isAuthorized(){ return !!(isAuthReady && currentUserId); }
+
+    // Email 登入 Modal 控制
+    window.openAuthModal = function(){
+      const allow = (window.__ALLOW_SIGNUP !== false);
+      document.getElementById('auth-modal').classList.remove('hidden');
+      document.getElementById('btn-auth-signup').classList.toggle('hidden', !allow);
+      document.getElementById('auth-msg').textContent='';
+      document.getElementById('auth-email').focus();
+    };
+    window.closeAuthModal = function(){ document.getElementById('auth-modal').classList.add('hidden'); };
+
+    function setAuthMsg(text, ok){
+      const el=document.getElementById('auth-msg'); el.textContent=text||''; el.className='text-sm ' + (ok?'text-green-600':'text-red-600');
+    }
+    window.handleEmailSignIn = async function(){
       try{
-        if(!v) return "";
-        if (typeof v==="string") return v.slice(0,10);
-        if (v?.toDate) return v.toDate().toISOString().slice(0,10);
-        if (v instanceof Date) return v.toISOString().slice(0,10);
-      }catch(e){ return "" }
-      return "";
-    }
-    function canUseSessionStorage(){ try{ const k='__ss__'+Math.random(); sessionStorage.setItem(k,'1'); const ok=sessionStorage.getItem(k)==='1'; sessionStorage.removeItem(k); return ok; } catch{ return false; } }
-    function isLikelyInAppBrowser(){
-      const ua = navigator.userAgent || '';
-      return /(FBAN|FBAV|Instagram|Line\/| Line;|MicroMessenger|WeChat|Twitter|TikTok|MiuiBrowser|wv;|; wv\)|OPR\/|DuckDuckGo)/i.test(ua);
-    }
-    function openInNewWindow(){ try{ window.open(location.href,'_blank','noopener,noreferrer'); }catch{} }
-    window.openInNewWindow = openInNewWindow;
-    async function copyUrl(){
-      const url = location.href.split('#')[0];
-      try{ await navigator.clipboard.writeText(url); showModal('已複製網址', url); }
-      catch{ showModal('請手動複製網址', url); }
-    }
-    window.copyUrl = copyUrl;
+        const email=(document.getElementById('auth-email').value||'').trim();
+        const pass=document.getElementById('auth-pass').value||'';
+        if(!email || !pass){ setAuthMsg('請輸入 Email 與密碼', false); return; }
+        setAuthMsg('登入中...', true);
+        await signInWithEmailAndPassword(auth, email, pass);
+        setAuthMsg('登入成功！', true);
+        closeAuthModal();
+      }catch(e){ setAuthMsg(e?.message||'登入失敗', false); }
+    };
+    window.handleEmailSignUp = async function(){
+      if(!ALLOW_SIGNUP){ return; }
+      try{
+        const email=(document.getElementById('auth-email').value||'').trim();
+        const pass=document.getElementById('auth-pass').value||'';
+        if(!email || pass.length<6){ setAuthMsg('請輸入 Email 與至少 6 碼密碼', false); return; }
+        setAuthMsg('註冊中...', true);
+        await createUserWithEmailAndPassword(auth, email, pass);
+        setAuthMsg('註冊成功，已登入！', true);
+        closeAuthModal();
+      }catch(e){ setAuthMsg(e?.message||'註冊失敗', false); }
+    };
+    window.handlePasswordReset = async function(){
+      try{
+        const email=(document.getElementById('auth-email').value||'').trim();
+        if(!email){ setAuthMsg('請輸入 Email 再重設密碼', false); return; }
+        await sendPasswordResetEmail(auth, email);
+        setAuthMsg('已寄出重設密碼信，請查收。', true);
+      }catch(e){ setAuthMsg(e?.message||'寄送失敗', false); }
+    };
 
-    function setBanner(type, text){
-      if(!statusBanner) return;
-      const cls = type==='error' ? 'bg-red-100 text-red-900 border-red-300'
-                : type==='warn' ? 'bg-yellow-100 text-yellow-900 border-yellow-300'
-                : 'bg-green-100 text-green-900 border-green-300';
-      statusBanner.className = cls + ' rounded-xl px-3 py-2 mb-3';
-      statusBanner.style.display = 'block';
-      statusBanner.innerHTML = text || '';
-    }
-    function clearBanner(){ if(statusBanner){ statusBanner.style.display='none'; statusBanner.innerHTML=''; } }
+    // Firebase 初始化 + Auth
+    async function initFirebase(){
+      if(!firebaseConfig) { console.error("缺少 Firebase 設定"); return; }
+      const app = initializeApp(firebaseConfig);
+      if(APP_CHECK_SITE_KEY){ initializeAppCheck(app, { provider: new ReCaptchaV3Provider(APP_CHECK_SITE_KEY), isTokenAutoRefreshEnabled: true }); }
+      db = getFirestore(app);
+      auth = getAuth(app);
+      storage = getStorage(app);
 
-    // ============ 使用者 UI ============
-    function updateUserChips(){
+      onAuthStateChanged(auth, async (user)=>{
+        isAuthReady = true;
+        if(user){
+          currentUserId = user.uid;
+          userProfile = { displayName: user.displayName || "", email: user.email || "", photoURL: user.photoURL || "" };
+          updateAuthUI(true);
+          if(!listenersStarted) initializeSystem(true);
+        }else{
+          currentUserId = "";
+          userProfile = { displayName:"", email:"", photoURL:"" };
+          updateAuthUI(false);
+          initializeSystem(false);
+        }
+      });
+    }
+
+    function updateAuthUI(loggedIn){
+      const btnIn  = document.getElementById("btn-signin");
+      const btnOut = document.getElementById("btn-signout");
+      const userBox = document.getElementById("user-box");
       const nameEl = document.getElementById("user-display-name");
-      const emailEl= document.getElementById("user-email");
-      const avatar = document.getElementById("user-avatar");
-      const initial= document.getElementById("user-initial");
-      const displayName = userProfile.displayName || userProfile.email?.split("@")[0] || "使用者";
-      const email = userProfile.email || "";
-      if(nameEl) nameEl.textContent = displayName;
-      if(emailEl) emailEl.textContent = email;
-      if(userProfile.photoURL){
-        avatar?.setAttribute("src", userProfile.photoURL);
-        avatar?.classList.remove("hidden");
-        initial?.classList.add("hidden");
-      }else{
-        avatar?.classList.add("hidden");
-        if(initial){ initial.textContent = (displayName[0]||"U").toUpperCase(); initial.classList.remove("hidden"); }
-      }
-    }
+      const emailEl = document.getElementById("user-email");
+      const avatarEl = document.getElementById("user-avatar");
+      const initialEl = document.getElementById("user-initial");
 
-    function showAppShell(show){
-      if(show){ landing.classList.add("hidden"); appShell.classList.remove("hidden"); }
-      else{ appShell.classList.add("hidden"); landing.classList.remove("hidden"); }
-      if(window.lucide?.createIcons) try{ lucide.createIcons(); }catch{}
-    }
+      if(btnIn)  btnIn.classList.toggle("hidden", !!loggedIn);
+      if(btnOut) btnOut.classList.toggle("hidden", !loggedIn);
 
-    function applyUser(user){
-      if(user){
-        currentUserId = user.uid;
-        userProfile = { displayName:user.displayName||"", email:user.email||"", photoURL:user.photoURL||"" };
-        updateUserChips();
-        showAppShell(true);
-        if(!listenersStarted) initializeSystem(true);
-        setDbgState('signed-in','ok'); logDbg('OK','applyUser signed-in',{uid:user.uid,email:user.email});
-        clearBanner();
-      }else{
-        currentUserId = "";
-        userProfile = { displayName:"", email:"", photoURL:"" };
-        showAppShell(false);
-        setDbgState('signed-out'); logDbg('INFO','applyUser signed-out');
-      }
-    }
-
-    // ============ 登入輔助 ============
-    async function clearAuthStuck(){
-      try{ landingLoading?.classList.add("hidden"); }catch{}
-      try{ btnGoogle?.removeAttribute('disabled'); }catch{}
-      try{ await signOut(auth); }catch{}
-      try{ [localStorage, sessionStorage].forEach(store=>{ try{ for(const k of Object.keys(store)){ if(/^firebase:/.test(k) || /firebase/i.test(k)) store.removeItem(k); } }catch{} }); }catch{}
-      logDbg('WARN','auth cache cleared');
-      alert('已清除登入快取，請重新登入。若你在 App 內建瀏覽器，建議改用外部瀏覽器或使用 Email 登入。');
-    }
-    window.clearAuthStuck = clearAuthStuck;
-
-    const REDIRECT_FLAG_KEY = 'auth:redirect:startedAt';
-    function markRedirectStart(){ try{ localStorage.setItem(REDIRECT_FLAG_KEY, String(Date.now())); }catch{} }
-    function redirectStartedMs(){ try{ return Number(localStorage.getItem(REDIRECT_FLAG_KEY)||0); }catch{ return 0 } }
-    function clearRedirectFlag(){ try{ localStorage.removeItem(REDIRECT_FLAG_KEY); }catch{} }
-
-    // Google 登入：popup → redirect（僅當 sessionStorage 可用）
-    window.signInWithGoogle = async function(){
-      if(isLikelyInAppBrowser()){
-        inAppOverlay.style.display = 'block';
-        openWindowBtn?.classList.remove('hidden');
-        resetBtn?.classList.remove('hidden');
-        showModal("請在外部瀏覽器開啟", "目前為 App 內建瀏覽器環境，Google 登入會被封鎖（403: disallowed_useragent）。請改用 Safari/Chrome 或使用 Email 登入。");
-        return;
-      }
-      try{
-        if(!auth){ await initFirebase().catch(()=>{}); }
-        if(!auth){ showModal("初始化中","驗證服務尚未就緒，請稍候再試或重新整理。"); return; }
-        const provider = new GoogleAuthProvider();
-        provider.setCustomParameters({ prompt: 'select_account' });
-
-        try{
-          setDbgState('popup','warn'); logDbg('INFO','signInWithPopup try',{ua:navigator.userAgent});
-          await signInWithPopup(auth, provider);
-          logDbg('OK','signInWithPopup success');
-          return;
-        }catch(e){
-          const ssOK = canUseSessionStorage();
-          logDbg('WARN','signInWithPopup failed', {code:e?.code, message:e?.message});
-          if(ssOK){
-            setDbgState('redirecting','warn'); logDbg('INFO','fallback to signInWithRedirect');
-            markRedirectStart();
-            await signInWithRedirect(auth, provider);
-            return;
+      if(userBox){
+        userBox.classList.toggle("hidden", !loggedIn);
+        if(loggedIn){
+          const displayName = userProfile.displayName || userProfile.email?.split("@")[0] || "使用者";
+          const email = userProfile.email || "";
+          if(nameEl) nameEl.textContent = displayName;
+          if(emailEl) emailEl.textContent = email;
+          if(userProfile.photoURL){
+            avatarEl?.setAttribute("src", userProfile.photoURL);
+            avatarEl?.classList.remove("hidden");
+            initialEl?.classList.add("hidden");
           }else{
-            openWindowBtn?.classList.remove('hidden');
-            resetBtn?.classList.remove('hidden');
-            setBanner('warn', '瀏覽器封鎖了登入視窗或儲存機制，請允許彈出視窗、改用外部瀏覽器，或使用 Email 登入。');
+            if(avatarEl){ avatarEl.removeAttribute("src"); avatarEl.classList.add("hidden"); }
+            if(initialEl){
+              const init = (displayName || "U").trim()[0]?.toUpperCase() || "U";
+              initialEl.textContent = init;
+              initialEl.classList.remove("hidden");
+            }
           }
         }
-      }catch(e){
-        logDbg('ERR','signInWithGoogle outer catch', {code:e?.code, message:e?.message});
-        landingLoading?.classList.add("hidden");
-        btnGoogle?.removeAttribute('disabled');
-        resetBtn?.classList.remove('hidden');
       }
-    };
-
-    // Email/Password 登入/註冊/重設
-    function setEmailMsg(text, ok){
-      emailMsg.textContent = text || "";
-      emailMsg.className = "text-sm " + (ok ? "text-green-600" : "text-red-600");
+      if(window.lucide?.createIcons) lucide.createIcons();
     }
-    emailForm.addEventListener('submit', async (e)=>{
-      e.preventDefault();
-      try{
-        const email = emailInput.value.trim();
-        const pass  = passInput.value;
-        setEmailMsg("登入中...", true);
-        await signInWithEmailAndPassword(auth, email, pass);
-        setEmailMsg("登入成功！正在進入儀表板...", true);
-      }catch(err){
-        setEmailMsg(err?.message || "登入失敗", false);
-      }
-    });
-    document.getElementById('btn-email-signup').addEventListener('click', async ()=>{
-      try{
-        const email = emailInput.value.trim();
-        const pass  = passInput.value;
-        if(pass.length < 6){ setEmailMsg("密碼至少 6 碼。", false); return; }
-        setEmailMsg("註冊中...", true);
-        await createUserWithEmailAndPassword(auth, email, pass);
-        setEmailMsg("註冊成功，已自動登入！", true);
-      }catch(err){
-        setEmailMsg(err?.message || "註冊失敗", false);
-      }
-    });
-    document.getElementById('btn-reset').addEventListener('click', async ()=>{
-      try{
-        const email = (emailInput.value || "").trim();
-        if(!email){ setEmailMsg("請先輸入 Email 再點重設密碼。", false); return; }
-        await sendPasswordResetEmail(auth, email);
-        setEmailMsg("已寄出重設密碼信，請查收。", true);
-      }catch(err){
-        setEmailMsg(err?.message || "寄送失敗", false);
-      }
-    });
 
     window.appSignOut = async function(){
-      try{ await signOut(auth); showModal("已登出","您已成功登出。"); applyUser(null); }
-      catch(e){ showModal("登出失敗", e?.message || String(e)); }
+      try{ await signOut(auth); showModal("已登出","您已成功登出。"); }
+      catch(e){ console.error(e); showModal("登出失敗", e?.message || String(e)); }
     };
 
+    // 系統初始化與監聽
+    function initializeSystem(withData){
+      if(currentView!=="dashboard") currentView = "dashboard";
+      renderDashboard(true);
+      if(withData) startRealtimeListeners();
+    }
+    function startRealtimeListeners(){
+      if(!db || listenersStarted) return; listenersStarted = true;
+      onSnapshot(query(collection(db, PROJECTS_COLLECTION_PATH), orderBy("createdAt","desc")), (snap)=>{ projects = snap.docs.map(d=>({id:d.id, ...d.data()})); rerenderByView(); });
+      onSnapshot(query(collection(db, TASKS_COLLECTION_PATH), orderBy("createdAt","desc")), (snap)=>{ tasks = snap.docs.map(d=>({id:d.id, ...d.data()})); rerenderByView(); });
+      onSnapshot(query(collection(db, EVENTS_COLLECTION_PATH), orderBy("startDate","asc")), (snap)=>{ events = snap.docs.map(d=>({id:d.id, ...d.data()})); if(currentView==="calendar") renderCalendar(); });
+      onSnapshot(query(collection(db, FILES_COLLECTION_PATH), orderBy("uploadedAt","desc")), (snap)=>{ files = snap.docs.map(d=>({id:d.id, ...d.data()})); if(currentView==="details") renderProjectDetails(selectedProjectId); });
+      onSnapshot(doc(db, SETTINGS_DOC_PATH), (snap)=>{ if(snap.exists()){ const d=snap.data()||{}; budgetCaps = { personnelCap:n(d.personnelCap), operatingCap:n(d.operatingCap), equipmentCap:n(d.equipmentCap) }; } else { budgetCaps = { personnelCap:0, operatingCap:0, equipmentCap:0 }; } if(currentView==="dashboard") renderDashboard(); });
+      onSnapshot(query(collection(db, MANAGERS_COLLECTION_PATH), orderBy("name","asc")), (snap)=>{ managers = snap.docs.map(d=>({ id:d.id, ...d.data() })); rerenderByView(); });
+      onSnapshot(query(collection(db, COMMUNITY_COLLECTION_PATH), orderBy("createdAt","desc")), (snap)=>{ communityPosts = snap.docs.map(d=>({ id:d.id, ...d.data() })); if(currentView==="community") renderCommunity(); });
+    }
+
+    // 視圖切換
+    window.setView = function(view, arg){
+      currentView = view;
+      setActiveByView(view);
+      if(view==="dashboard"){ renderDashboard(); }
+      else if(view==="creation"){ renderProjectCreation(); }
+      else if(view==="details"){ selectedProjectId = (typeof arg === "string" && arg) ? arg : (projects[0]?.id || null); renderProjectDetails(selectedProjectId); }
+      else if(view==="tasks"){ renderTaskManagement(); }
+      else if(view==="calendar"){ renderCalendar(); }
+      else if(view==="report"){ renderReport(); }
+      else if(view==="community"){ renderCommunity(); }
+    };
+    function rerenderByView(){
+      if(currentView==="dashboard") renderDashboard();
+      if(currentView==="creation") renderProjectCreation();
+      if(currentView==="details") renderProjectDetails(selectedProjectId);
+      if(currentView==="tasks") renderTaskManagement();
+      if(currentView==="calendar") renderCalendar();
+      if(currentView==="report") renderReport();
+      if(currentView==="community") renderCommunity();
+    }
+    function setActiveByView(view){
+      document.querySelectorAll('#app-sidebar .nav-item').forEach(el=>{ el.classList.toggle('active', el.getAttribute('data-view') === view); });
+      if(window.lucide?.createIcons) lucide.createIcons();
+    }
+
+    // 儀表板（保留你的版型，列出每個專案）
+    function renderDashboard(isBoot=false){
+      const c = document.getElementById("main-content"); if(!c) return;
+      const notLogged = !currentUserId;
+
+      const totalProjects = projects.length;
+      const completed = projects.filter(p => (n(p.progress)) >= 95).length;
+      const totalBudget = projects.reduce((s,p)=>s+n(p.budget),0);
+      const empty = totalProjects===0;
+
+      let personnelUsed = 0, operatingUsed = 0, equipmentUsed = 0;
+      for(const p of projects){
+        const pu = ('personnelUsed' in p) ? n(p.personnelUsed) : n(p.personnelBudget);
+        const ou = ('operatingUsed' in p) ? n(p.operatingUsed) : n(p.operatingBudget);
+        const eu = ('equipmentUsed' in p) ? n(p.equipmentUsed) : n(p.equipmentBudget);
+        personnelUsed += pu; operatingUsed += ou; equipmentUsed += eu;
+      }
+      const pc = n(budgetCaps.personnelCap), oc = n(budgetCaps.operatingCap), ec = n(budgetCaps.equipmentCap);
+      const pRate = pc>0 ? clamp01(personnelUsed/pc) : 0;
+      const oRate = oc>0 ? clamp01(operatingUsed/oc) : 0;
+      const eRate = ec>0 ? clamp01(equipmentUsed/ec) : 0;
+      const pRemain = pc - personnelUsed, oRemain = oc - operatingUsed, eRemain = ec - equipmentUsed;
+      const barClass = (rate, remain)=> remain>=0 ? (rate>=0.95 ? "bg-yellow-400" : "bg-primary-blue") : "bg-red-500";
+
+      c.innerHTML = `
+        <h2 class="text-3xl font-bold text-gray-800 mb-6 border-b pb-2 flex items-center">
+          <i data-lucide="layout-dashboard" class="w-7 h-7 mr-3 text-primary-blue"></i> 專案儀表板
+          ${notLogged ? '<span class="ml-3 text-xs px-2 py-1 rounded bg-yellow-100 text-yellow-800">請先登入以讀取資料</span>' : ''}
+        </h2>
+
+        ${ isBoot && !listenersStarted ? `
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8 animate-pulse">
+            ${[1,2,3].map(()=>`
+              <div class="bg-white p-6 rounded-xl shadow-lg">
+                <div class="h-6 bg-gray-200 rounded w-1/3 mb-4"></div>
+                <div class="h-8 bg-gray-200 rounded w-1/2"></div>
+              </div>`).join('')}
+          </div>
+        ` : ''}
+
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+          <div class="project-card bg-white p-6 rounded-xl shadow-lg border-t-4 border-primary-blue">
+            <div class="flex items-center justify-between">
+              <i data-lucide="layers" class="w-8 h-8 text-primary-blue"></i>
+              <span class="text-3xl font-extrabold text-gray-900">${totalProjects}</span>
+            </div>
+            <p class="text-gray-500 mt-2">總專案數</p>
+          </div>
+          <div class="project-card bg-white p-6 rounded-xl shadow-lg border-t-4 border-secondary-green">
+            <div class="flex items-center justify-between">
+              <i data-lucide="check-circle" class="w-8 h-8 text-secondary-green"></i>
+              <span class="text-3xl font-extrabold text-gray-900">${completed}</span>
+            </div>
+            <p class="text-gray-500 mt-2">接近完成專案數</p>
+          </div>
+          <div class="project-card bg-white p-6 rounded-xl shadow-lg border-t-4 border-accent-orange">
+            <div class="flex items-center justify-between">
+              <i data-lucide="wallet" class="w-8 h-8 text-accent-orange"></i>
+              <span class="text-xl font-extrabold text-gray-900">${fmtMoney(totalBudget)}</span>
+            </div>
+            <p class="text-gray-500 mt-2">所有專案的預算概算總計</p>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+          <div class="project-card bg-white p-6 rounded-xl shadow-lg border-t-4 border-primary-blue">
+            <div class="flex items-center justify-between mb-2"><div class="font-semibold text-gray-800">人事費總預算</div><div class="text-sm text-gray-500">${fmtMoney(pc)}</div></div>
+            <div class="w-full bg-gray-200 rounded-full h-3"><div class="progress-bar h-3 rounded-full ${barClass(pRate, pRemain)}" style="width:${(pRate*100).toFixed(0)}%"></div></div>
+            <div class="mt-2 text-sm text-gray-700 flex justify-between"><span>已用：<strong>${fmtMoney(personnelUsed)}</strong>（${(pRate*100).toFixed(0)}%）</span><span>${pRemain>=0 ? `餘額：<strong>${fmtMoney(pRemain)}</strong>` : `超支：<strong class="text-red-600">${fmtMoney(-pRemain)}</strong>`}</span></div>
+          </div>
+          <div class="project-card bg-white p-6 rounded-xl shadow-lg border-t-4 border-primary-blue">
+            <div class="flex items-center justify-between mb-2"><div class="font-semibold text-gray-800">業務費總預算</div><div class="text-sm text-gray-500">${fmtMoney(oc)}</div></div>
+            <div class="w-full bg-gray-200 rounded-full h-3"><div class="progress-bar h-3 rounded-full ${barClass(oRate, oRemain)}" style="width:${(oRate*100).toFixed(0)}%"></div></div>
+            <div class="mt-2 text-sm text-gray-700 flex justify-between"><span>已用：<strong>${fmtMoney(operatingUsed)}</strong>（${(oRate*100).toFixed(0)}%）</span><span>${oRemain>=0 ? `餘額：<strong>${fmtMoney(oRemain)}</strong>` : `超支：<strong class="text-red-600">${fmtMoney(-oRemain)}</strong>`}</span></div>
+          </div>
+          <div class="project-card bg-white p-6 rounded-xl shadow-lg border-t-4 border-primary-blue">
+            <div class="flex items-center justify-between mb-2"><div class="font-semibold text-gray-800">設備費總預算</div><div class="text-sm text-gray-500">${fmtMoney(ec)}</div></div>
+            <div class="w-full bg-gray-200 rounded-full h-3"><div class="progress-bar h-3 rounded-full ${barClass(eRate, eRemain)}" style="width:${(eRate*100).toFixed(0)}%"></div></div>
+            <div class="mt-2 text-sm text-gray-700 flex justify-between"><span>已用：<strong>${fmtMoney(equipmentUsed)}</strong>（${(eRate*100).toFixed(0)}%）</span><span>${eRemain>=0 ? `餘額：<strong>${fmtMoney(eRemain)}</strong>` : `超支：<strong class="text-red-600">${fmtMoney(-eRemain)}</strong>`}</span></div>
+          </div>
+        </div>
+
+        <div class="bg-white p-6 rounded-xl shadow-lg mb-8">
+          <h3 class="text-xl font-semibold text-gray-800 mb-4">所有專案概覽</h3>
+          ${
+            empty ? `
+            <div class="text-center py-10">
+              <i data-lucide="alert-triangle" class="w-10 h-10 text-yellow-500 mx-auto mb-4"></i>
+              <p class="text-lg text-gray-600">${notLogged ? '請先登入以載入專案資料。' : '目前沒有專案資料。'}</p>
+              <button onclick="setView('creation')" class="mt-4 px-4 py-2 bg-primary-blue text-white rounded-lg hover:bg-blue-700 transition">
+                <i data-lucide="plus" class="w-5 h-5 inline mr-1"></i> 新增第一個專案
+              </button>
+            </div>` : `
+            <div class="overflow-x-auto">
+              <table class="min-w-full divide-y divide-gray-200">
+                <thead class="bg-gray-50">
+                  <tr>
+                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">編號/名稱</th>
+                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">專案管理人</th>
+                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">進度</th>
+                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">即時狀態</th>
+                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">操作</th>
+                  </tr>
+                </thead>
+                <tbody class="bg-white divide-y divide-gray-200">
+                  ${projects.map(p=>{
+                    const prog = n(p.progress);
+                    const bar = prog>=95 ? "bg-secondary-green" : (prog<50?"bg-accent-orange":"bg-primary-blue");
+                    const badge = prog>=95 ? "bg-secondary-green/10 text-secondary-green" : (prog<50?"bg-accent-orange/10 text-accent-orange":"bg-primary-blue/10 text-primary-blue");
+                    return `
+                    <tr>
+                      <td class="px-4 py-4 whitespace-nowrap text-sm font-medium text-primary-blue hover:underline cursor-pointer" onclick="setView('details','${escapeHtml(p.id)}')">
+                        <div class="text-xs text-gray-500">${escapeHtml(p.projectCode||p.id)}</div>${escapeHtml(p.title||'(未命名專案)')}
+                      </td>
+                      <td class="px-4 py-4 whitespace-nowrap text-sm text-gray-800">${escapeHtml(p.manager||"")}</td>
+                      <td class="px-4 py-4 whitespace-nowrap text-sm">
+                        <div class="w-32 bg-gray-200 rounded-full h-2.5"><div class="progress-bar h-2.5 rounded-full ${bar}" style="width:${prog}%"></div></div>
+                        <span class="text-xs text-gray-500 mt-1 inline-block">${prog}%</span>
+                      </td>
+                      <td class="px-4 py-4 whitespace-nowrap text-sm">
+                        <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${badge}">${escapeHtml(p.status||"")}</span>
+                      </td>
+                      <td class="px-4 py-4 whitespace-nowrap text-sm">
+                        <button onclick="setView('details','${escapeHtml(p.id)}')" class="text-primary-blue hover:text-blue-700 text-sm">查看詳情</button>
+                      </td>
+                    </tr>`;}).join("")}
+                </tbody>
+              </table>
+            </div>`}
+        </div>
+
+        <div class="bg-white p-6 rounded-xl shadow-lg">
+          <h3 class="text-xl font-semibold text-gray-800 mb-4 flex items-center">
+            <i data-lucide="send" class="w-5 h-5 mr-2 text-primary-blue"></i> 即時更新/問題回報
+          </h3>
+          <form id="integration-form" class="space-y-4">
+            <div>
+              <label class="block text-sm font-medium text-gray-700">選擇專案</label>
+              <select id="update-project-id" class="mt-1 block w-full rounded-md border-gray-300 p-2 border">
+                ${ projects.length>0 ? projects.map(p=>`<option value="${escapeHtml(p.id)}">${escapeHtml(p.id)} - ${escapeHtml(p.title)}</option>`).join("") : '<option value="">請先新增專案</option>'}
+              </select>
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-gray-700">負責人</label>
+              <select id="update-manager" class="mt-1 block w-full rounded-md border-gray-300 p-2 border">
+                ${ managerOptionsHtml() }
+              </select>
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-gray-700">更新/問題描述</label>
+              <textarea id="update-message" rows="3" class="mt-1 block w-full rounded-md border-gray-300 p-2 border" placeholder="請輸入更新內容"></textarea>
+            </div>
+            <button type="submit" class="w-full py-2 bg-accent-orange text-white rounded-lg hover:bg-orange-700">提交更新</button>
+          </form>
+          <div id="update-feedback" class="mt-4 text-sm font-medium"></div>
+        </div>
+      `;
+      if(window.lucide?.createIcons) lucide.createIcons();
+
+      document.getElementById("integration-form")?.addEventListener("submit", async (e)=>{
+        e.preventDefault();
+        const projectId = document.getElementById("update-project-id").value;
+        const manager = document.getElementById("update-manager").value;
+        const message = document.getElementById("update-message").value;
+        const feedback = document.getElementById("update-feedback");
+
+        if(!message || !projectId){ feedback.className="mt-4 text-sm text-red-600"; feedback.textContent="請填寫完整的更新訊息。"; return; }
+        if(!isAuthorized()){ feedback.className="mt-4 text-sm text-red-600"; feedback.textContent="請先登入再提交。"; return; }
+        try{
+          await addDoc(collection(db, TASKS_COLLECTION_PATH), {
+            projectId, taskName:`即時更新: ${message.substring(0,30)}...`, description: message,
+            assignee: manager, dueDate: new Date().toISOString().slice(0,10), status:"更新",
+            createdAt: serverTimestamp(), reporterId: currentUserId
+          });
+          feedback.className="mt-4 text-sm text-secondary-green"; feedback.textContent=`成功提交更新。`;
+          document.getElementById("integration-form").reset();
+        }catch(err){
+          console.error(err); feedback.className="mt-4 text-sm text-red-600"; feedback.textContent="提交更新失敗：資料庫錯誤。";
+        }
+      });
+    }
+
+    // 新增/編輯專案：表單頁（包含：計畫編號/名稱/管理者/主持人/人事/設備/業務費）
+    function renderProjectCreation(){
+      const c = document.getElementById("main-content");
+      c.innerHTML = `
+        <h2 class="text-3xl font-bold text-gray-800 mb-6 border-b pb-2 flex items-center">
+          <i data-lucide="folder-plus" class="w-7 h-7 mr-3 text-primary-blue"></i> 新增/編輯專案資料
+        </h2>
+
+        <div class="bg-white p-6 rounded-xl shadow-lg mb-8">
+          <h3 class="text-xl font-semibold text-gray-800 mb-4 border-b pb-2">新增專案</h3>
+          <form id="new-project-form" class="space-y-4">
+            <div>
+              <label class="block text-sm font-medium text-gray-700">專案編號（唯一）</label>
+              <input type="text" id="proj-id" required class="mt-1 block w-full rounded-md border-gray-300 p-2 border" placeholder="例如 TP-2025-001"/>
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-gray-700">專案名稱</label>
+              <input type="text" id="proj-title" required class="mt-1 block w-full rounded-md border-gray-300 p-2 border"/>
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label class="block text-sm font-medium text-gray-700">專案管理者</label>
+                <select id="proj-manager" required class="mt-1 block w-full rounded-md border-gray-300 p-2 border">
+                  ${ managerOptionsHtml() }
+                </select>
+              </div>
+              <div>
+                <label class="block text-sm font-medium text-gray-700">計畫主持人</label>
+                <input type="text" id="proj-pi" class="mt-1 block w-full rounded-md border-gray-300 p-2 border" placeholder="主持人姓名"/>
+              </div>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div>
+                <label class="block text-sm font-medium text-gray-700">人事費 (NTD)</label>
+                <input type="number" id="proj-personnel" min="0" value="0" class="mt-1 block w-full rounded-md border-gray-300 p-2 border"/>
+              </div>
+              <div>
+                <label class="block text-sm font-medium text-gray-700">設備費 (NTD)</label>
+                <input type="number" id="proj-equipment" min="0" value="0" class="mt-1 block w-full rounded-md border-gray-300 p-2 border"/>
+              </div>
+              <div>
+                <label class="block text-sm font-medium text-gray-700">業務費 (NTD)</label>
+                <input type="number" id="proj-operating" min="0" value="0" class="mt-1 block w-full rounded-md border-gray-300 p-2 border"/>
+              </div>
+            </div>
+
+            <div>
+              <label class="block text-sm font-medium text-gray-700">預算概算 (自動合計)</label>
+              <input type="number" id="proj-budget" min="0" value="0" class="mt-1 block w-full rounded-md border-gray-300 p-2 border bg-gray-100" readonly/>
+              <p class="text-xs text-gray-500 mt-1">預算概算 = 人事費 + 設備費 + 業務費</p>
+            </div>
+
+            <div class="grid grid-cols-2 gap-4">
+              <div>
+                <label class="block text-sm font-medium text-gray-700">初始進度 (%)</label>
+                <input type="number" id="proj-progress" min="0" max="100" value="0" required class="mt-1 block w-full rounded-md border-gray-300 p-2 border"/>
+              </div>
+              <div>
+                <label class="block text-sm font-medium text-gray-700">初始狀態描述</label>
+                <input type="text" id="proj-status" required class="mt-1 block w-full rounded-md border-gray-300 p-2 border"/>
+              </div>
+            </div>
+
+            <button type="submit" class="w-full py-2 bg-secondary-green text-white rounded-lg hover:bg-green-700">儲存新專案</button>
+          </form>
+          <div id="project-form-feedback" class="mt-4 text-sm font-medium"></div>
+        </div>
+      `;
+      if(window.lucide?.createIcons) lucide.createIcons();
+
+      const inputs = ["proj-personnel","proj-operating","proj-equipment"].map(id=>document.getElementById(id));
+      const totalEl = document.getElementById("proj-budget");
+      const recalc = ()=>{ totalEl.value = inputs.map(el=>Number(el.value)||0).reduce((a,b)=>a+b,0); };
+      inputs.forEach(el=>el?.addEventListener("input", recalc)); recalc();
+
+      document.getElementById("new-project-form")?.addEventListener("submit", handleNewProjectSubmission);
+    }
+
+    function isValidProjectId(id){ return /^[A-Za-z0-9_-]{3,64}$/.test(id||""); }
+    async function handleNewProjectSubmission(e){
+      e.preventDefault();
+      const feedback = document.getElementById("project-form-feedback");
+      if(!isAuthorized()){ showModal("請先登入","請先登入後再新增專案。"); return; }
+
+      const projectId = document.getElementById("proj-id").value.trim();
+      const title = document.getElementById("proj-title").value.trim();
+      const manager = document.getElementById("proj-manager").value;
+      const pi      = (document.getElementById("proj-pi").value||"").trim();
+
+      const personnelBudget = n(document.getElementById("proj-personnel").value);
+      const equipmentBudget = n(document.getElementById("proj-equipment").value);
+      const operatingBudget = n(document.getElementById("proj-operating").value);
+      const budget = n(document.getElementById("proj-budget").value);
+      const progress = Math.max(0, Math.min(100, n(document.getElementById("proj-progress").value)));
+      const status = document.getElementById("proj-status").value.trim();
+
+      if(!isValidProjectId(projectId)){
+        feedback.className="mt-4 text-sm text-red-600"; feedback.textContent="格式錯誤：專案編號僅能包含英數字、底線、連字號，長度 3–64。"; return;
+      }
+      if(projects.some(p=>p.id===projectId)){
+        feedback.className="mt-4 text-sm text-red-600"; feedback.textContent=`錯誤：專案編號 ${projectId} 已存在！`; return;
+      }
+
+      try{
+        await setDoc(doc(db, PROJECTS_COLLECTION_PATH, projectId), {
+          id: projectId, projectCode: projectId, title, manager, pi,
+          budget, personnelBudget, equipmentBudget, operatingBudget,
+          progress, status, createdAt: serverTimestamp(), reporterId: currentUserId
+        });
+        feedback.className="mt-4 text-sm text-secondary-green"; feedback.textContent="專案新增成功！";
+        document.getElementById("new-project-form").reset(); document.getElementById("proj-budget").value = 0;
+      }catch(err){
+        console.error(err); feedback.className="mt-4 text-sm text-red-600"; feedback.textContent=`專案新增失敗：${err.message}`;
+      }
+    }
+
+    // 專案詳情（含附件）
+    function renderProjectDetails(projectId){
+      const container = document.getElementById("main-content");
+
+      if(!projects || projects.length===0){
+        container.innerHTML = `
+          <h2 class="text-3xl font-bold text-gray-800 mb-6 border-b pb-2 flex items-center">
+            <i data-lucide="clipboard-list" class="w-7 h-7 mr-3 text-primary-blue"></i> 專案詳情
+          </h2>
+          <div class="bg-white p-6 rounded-xl shadow-lg text-center">
+            <i data-lucide="alert-triangle" class="w-10 h-10 text-yellow-500 mx-auto mb-4"></i>
+            <p class="text-gray-700 mb-4">目前沒有任何專案資料。</p>
+            <button onclick="setView('creation')" class="px-4 py-2 bg-primary-blue text-white rounded-lg hover:bg-blue-700">新增第一個專案</button>
+          </div>`;
+        if(window.lucide?.createIcons) lucide.createIcons();
+        return;
+      }
+
+      if(!projectId){
+        container.innerHTML = `
+          <h2 class="text-3xl font-bold text-gray-800 mb-6 border-b pb-2 flex items-center">
+            <i data-lucide="clipboard-list" class="w-7 h-7 mr-3 text-primary-blue"></i> 專案詳情
+          </h2>
+          <div class="bg-white p-6 rounded-xl shadow-lg">
+            <p class="text-gray-700 mb-4">請選擇要查看的專案：</p>
+            <div class="flex items-center gap-3">
+              <select id="details-project-select" class="rounded-md border-gray-300 p-2 border flex-1">
+                ${projects.map(p=>`<option value="${escapeHtml(p.id)}">${escapeHtml(p.id)} - ${escapeHtml(p.title)}</option>`).join("")}
+              </select>
+              <button id="details-go-btn" class="px-4 py-2 bg-primary-blue text-white rounded-lg hover:bg-blue-700">查看詳情</button>
+            </div>
+          </div>`;
+        if(window.lucide?.createIcons) lucide.createIcons();
+        document.getElementById('details-go-btn')?.addEventListener('click',()=>{
+          const sel = document.getElementById('details-project-select'); const val = sel?.value || null;
+          if(val) setView('details', val);
+        });
+        return;
+      }
+
+      const project = projects.find(p=>p.id===projectId);
+      if(!project){
+        container.innerHTML = `
+          <h2 class="text-3xl font-bold text-gray-800 mb-6 border-b pb-2 flex items-center">
+            <i data-lucide="clipboard-list" class="w-7 h-7 mr-3 text-primary-blue"></i> 專案詳情
+          </h2>
+          <div class="bg-white p-6 rounded-xl shadow-lg">
+            <p class="text-red-600 mb-4">找不到專案「${escapeHtml(String(projectId))}」。請重新選擇：</p>
+            <div class="flex items-center gap-3">
+              <select id="details-project-select" class="rounded-md border-gray-300 p-2 border flex-1">
+                ${projects.map(p=>`<option value="${escapeHtml(p.id)}">${escapeHtml(p.id)} - ${escapeHtml(p.title)}</option>`).join("")}
+              </select>
+              <button id="details-go-btn" class="px-4 py-2 bg-primary-blue text-white rounded-lg hover:bg-blue-700">查看詳情</button>
+            </div>
+          </div>`;
+        if(window.lucide?.createIcons) lucide.createIcons();
+        document.getElementById('details-go-btn')?.addEventListener('click',()=>{
+          const sel = document.getElementById('details-project-select'); const val = sel?.value || null;
+          if(val) setView('details', val);
+        });
+        return;
+      }
+
+      const progress = Number(project.progress)||0;
+      const barColor = progress>=95 ? "bg-secondary-green" : (progress<50?"bg-accent-orange":"bg-primary-blue");
+      const projectFiles = files.filter(f=>f.projectId===projectId);
+
+      container.innerHTML = `
+        <h2 class="text-3xl font-bold text-gray-800 mb-6 border-b pb-2 flex items-center">
+          <i data-lucide="clipboard-list" class="w-7 h-7 mr-3 text-primary-blue"></i>
+          專案詳情: ${escapeHtml(project.title)}
+        </h2>
+
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
+          <div class="lg:col-span-1 bg-white p-6 rounded-xl shadow-lg space-y-3">
+            <h3 class="text-xl font-semibold text-primary-blue mb-4 border-b pb-2">基本資訊</h3>
+            <p class="text-sm"><strong class="text-gray-600">計畫編號:</strong> ${escapeHtml(project.projectCode||project.id)}</p>
+            <p class="text-sm"><strong class="text-gray-600">專案管理人:</strong> <span class="text-lg font-bold text-secondary-green">${escapeHtml(project.manager||"")}</span></p>
+            <p class="text-sm"><strong class="text-gray-600">計畫主持人:</strong> ${escapeHtml(project.pi||"")}</p>
+            <p class="text-sm"><strong class="text-gray-600">預算概算:</strong> ${fmtMoney(project.budget)}</p>
+            <div class="text-sm text-gray-700 pl-1">
+              <p>・人事費：${fmtMoney(project.personnelBudget)}</p>
+              <p>・設備費：${fmtMoney(project.equipmentBudget)}</p>
+              <p>・業務費：${fmtMoney(project.operatingBudget)}</p>
+            </div>
+          </div>
+
+          <div class="lg:col-span-2 bg-white p-6 rounded-xl shadow-lg">
+            <h3 class="text-xl font-semibold text-primary-blue mb-4 border-b pb-2">流程進度與相關文件</h3>
+            <div class="flex items-center space-x-4 mb-4">
+              <span class="text-gray-600 font-medium">總進度:</span>
+              <div class="flex-grow bg-gray-200 rounded-full h-4">
+                <div class="progress-bar h-4 rounded-full ${barColor}" style="width:${progress}%"></div>
+              </div>
+              <span class="font-bold text-lg ${progress>=95?'text-secondary-green':'text-primary-blue'}">${progress}%</span>
+            </div>
+            <p class="text-sm text-gray-700">目前狀態: <span class="font-medium text-lg text-red-500">${escapeHtml(project.status||"")}</span></p>
+
+            <div class="mt-6">
+              <h4 class="text-md font-semibold text-gray-700">附件上傳</h4>
+              <div class="flex items-center gap-2">
+                <input type="file" id="file-input" multiple class="block w-full text-sm text-gray-700"/>
+                <button id="file-upload-btn" class="px-3 py-2 text-sm bg-primary-blue text-white rounded-lg hover:bg-blue-700">上傳</button>
+              </div>
+              <div id="file-upload-progress" class="text-xs text-gray-600 mt-2"></div>
+
+              <h4 class="text-md font-semibold text-gray-700 mt-4">附件列表</h4>
+              <ul id="file-list" class="list-disc list-inside text-sm text-primary-blue space-y-1 ml-4 mt-2">
+                ${
+                  projectFiles.length
+                  ? projectFiles.map(f=>`
+                      <li>
+                        <a href="${escapeHtml(f.url)}" target="_blank" class="hover:underline">${escapeHtml(f.name)}</a>
+                        <span class="text-gray-500">(${Math.round((Number(f.size)||0)/1024)} KB)</span>
+                        ${ (f.reporterId||"")===currentUserId
+                            ? `<button class="ml-2 text-red-600 text-xs hover:underline" onclick="deleteProjectFile('${escapeHtml(f.id)}')">刪除</button>`
+                            : "" }
+                      </li>
+                    `).join("")
+                  : '<li class="text-gray-500">尚無附件</li>'
+                }
+              </ul>
+            </div>
+          </div>
+        </div>
+      `;
+      if(window.lucide?.createIcons) lucide.createIcons();
+
+      document.getElementById("file-upload-btn")?.addEventListener("click", async ()=>{
+        const inp = document.getElementById("file-input");
+        const progressEl = document.getElementById("file-upload-progress");
+        const fl = inp?.files;
+        if(!fl || fl.length===0){ showModal("未選擇檔案","請先選擇檔案再上傳。"); return; }
+        if(!isAuthorized()){ showModal("請先登入","請先登入後再上傳。"); return; }
+        try{
+          progressEl.textContent = "上傳中...";
+          await uploadProjectFiles(projectId, fl, (pct, name)=>{ progressEl.textContent = `上傳 ${name}：${pct}%`; });
+          progressEl.textContent = "上傳完成。";
+          inp.value = "";
+        }catch(err){ console.error(err); progressEl.textContent = `上傳失敗：${err.message}`; }
+      });
+    }
+
+    async function uploadProjectFiles(projectId, fileList, onProgress){
+      for(const file of fileList){
+        const safeName = file.name.replace(/[^\w.\-() ]+/g, "_");
+        const storagePath = `artifacts/${APP_ID}/uploads/project_files/${projectId}/${Date.now()}_${safeName}`;
+        const refObj = sRef(storage, storagePath);
+        const task = uploadBytesResumable(refObj, file, { contentType: file.type || "application/octet-stream", customMetadata: { ownerUid: currentUserId } });
+        await new Promise((resolve, reject)=>{ task.on("state_changed", snap => { if(onProgress){ const pct = Math.round((snap.bytesTransferred / snap.totalBytes) * 100); onProgress(pct, file.name); } }, reject, resolve ); });
+        const url = await getDownloadURL(refObj);
+        await addDoc(collection(db, FILES_COLLECTION_PATH), {
+          projectId, name: file.name, size: file.size || 0, contentType: file.type || "",
+          url, storagePath, uploadedAt: serverTimestamp(), reporterId: currentUserId
+        });
+      }
+    }
+    async function deleteProjectFile(fileId){
+      if(!isAuthorized()){ showModal("請先登入","請先登入後再操作。"); return; }
+      const f = files.find(x=>x.id===fileId); if(!f){ showModal("找不到檔案",""); return; }
+      if((f.reporterId||"") !== currentUserId){ showModal("權限限制","僅上傳者可刪除此檔案。"); return; }
+      try{
+        if(f.storagePath){ await deleteObject(sRef(storage, f.storagePath)); }
+        await deleteDoc(doc(db, FILES_COLLECTION_PATH, fileId));
+        showModal("刪除成功", f.name);
+      }catch(err){ console.error(err); showModal("錯誤", `刪除檔案失敗：${err.message}`); }
+    }
+    window.deleteProjectFile = deleteProjectFile;
+
+    // 任務
+    function renderTaskManagement(){
+      const c = document.getElementById("main-content");
+      c.innerHTML = `
+        <h2 class="text-3xl font-bold text-gray-800 mb-6 border-b pb-2 flex items-center">
+          <i data-lucide="clipboard-check" class="w-7 h-7 mr-3 text-primary-blue"></i> 任務管理中心
+        </h2>
+
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div class="lg:col-span-1 bg-white p-6 rounded-xl shadow-lg h-fit">
+            <h3 class="text-xl font-semibold text-gray-800 mb-4 border-b pb-2">分配新任務</h3>
+            <form id="new-task-form" class="space-y-4">
+              <div>
+                <label class="block text-sm font-medium text-gray-700">所屬專案</label>
+                <select id="task-project-id" class="mt-1 block w-full rounded-md border-gray-300 p-2 border">
+                  ${ projects.length>0 ? projects.map(p=>`<option value="${escapeHtml(p.id)}">${escapeHtml(p.id)} - ${escapeHtml(p.title)}</option>`).join("") : '<option value="">請先新增專案</option>'}
+                </select>
+              </div>
+              <div>
+                <label class="block text-sm font-medium text-gray-700">任務名稱</label>
+                <input type="text" id="task-name" required class="mt-1 block w-full rounded-md border-gray-300 p-2 border"/>
+              </div>
+              <div>
+                <label class="block text-sm font-medium text-gray-700">分配給</label>
+                <select id="task-assignee" required class="mt-1 block w-full rounded-md border-gray-300 p-2 border">
+                  ${ managerOptionsHtml() }
+                </select>
+              </div>
+              <div>
+                <label class="block text-sm font-medium text-gray-700">截止日期</label>
+                <input type="date" id="task-due-date" required class="mt-1 block w-full rounded-md border-gray-300 p-2 border"/>
+              </div>
+              <button type="submit" class="w-full py-2 bg-primary-blue text-white rounded-lg hover:bg-blue-800">分配任務</button>
+            </form>
+            <div id="task-form-feedback" class="mt-4 text-sm font-medium"></div>
+          </div>
+
+          <div class="lg:col-span-2 bg-white p-6 rounded-xl shadow-lg">
+            <h3 class="text-xl font-semibold text-gray-800 mb-4 border-b pb-2">所有任務追蹤</h3>
+
+            <div class="flex space-x-3 mb-4 text-sm">
+              <select id="task-filter-manager" class="rounded-md border-gray-300 p-2 border">
+                <option value="">所有負責人</option>
+                ${ managerOptionsHtml() }
+              </select>
+              <select id="task-filter-status" class="rounded-md border-gray-300 p-2 border">
+                <option value="">所有狀態</option>
+                <option value="待辦">待辦</option>
+                <option value="進行中">進行中</option>
+                <option value="完成">完成</option>
+                <option value="更新">即時更新</option>
+              </select>
+              <button onclick="renderTaskList()" class="px-3 py-2 bg-gray-100 rounded-lg text-gray-700 hover:bg-gray-200">過濾</button>
+            </div>
+
+            <div id="current-tasks-list" class="space-y-2"></div>
+          </div>
+        </div>
+      `;
+      if(window.lucide?.createIcons) lucide.createIcons();
+
+      document.getElementById("new-task-form")?.addEventListener("submit", handleNewTaskSubmission);
+      renderTaskList();
+    }
+
+    async function handleNewTaskSubmission(e){
+      e.preventDefault();
+      const feedback = document.getElementById("task-form-feedback");
+      if(!isAuthorized()){ showModal("請先登入","請先登入後再分配任務。"); return; }
+
+      const projectId = document.getElementById("task-project-id").value;
+      const taskName = document.getElementById("task-name").value;
+      const assignee = document.getElementById("task-assignee").value;
+      const dueDate = document.getElementById("task-due-date").value;
+
+      if(!projectId){ feedback.className="mt-4 text-sm text-red-600"; feedback.textContent="請先選擇專案。"; return; }
+      try{
+        const taskRef = await addDoc(collection(db, TASKS_COLLECTION_PATH), {
+          projectId, taskName, assignee, dueDate, status:"待辦",
+          createdAt: serverTimestamp(), reporterId: currentUserId
+        });
+        await addDoc(collection(db, EVENTS_COLLECTION_PATH), {
+          projectId, title: taskName, assignee, startDate: dueDate, endDate: dueDate,
+          description: `任務：${taskName}（自動建立於任務分配）`,
+          createdFromTaskId: taskRef.id, createdAt: serverTimestamp(), reporterId: currentUserId
+        });
+        feedback.className="mt-4 text-sm text-secondary-green"; feedback.textContent="任務分配成功！已同步建立行事曆事件。";
+        document.getElementById("new-task-form").reset();
+      }catch(err){ console.error(err); feedback.className="mt-4 text-sm text-red-600"; feedback.textContent="任務分配失敗：資料庫錯誤。"; }
+    }
+
+    function renderTaskList(){
+      const list = document.getElementById("current-tasks-list"); if(!list) return;
+      const fm = document.getElementById("task-filter-manager")?.value || "";
+      const fs = document.getElementById("task-filter-status")?.value || "";
+      const data = tasks
+        .filter(t => (!fm || t.assignee===fm) && (!fs || t.status===fs))
+        .sort((a,b)=> (a.status==="待辦" && b.status!=="待辦")?-1 : (a.status!=="待辦" && b.status==="待辦")?1 : (new Date(a.dueDate)-new Date(b.dueDate)));
+      if(data.length===0){ list.innerHTML = '<p class="text-gray-500 text-center py-8">沒有符合過濾條件的任務。</p>'; return; }
+      list.innerHTML = data.map(t=>{
+        const project = projects.find(p=>p.id===t.projectId);
+        let badge="bg-gray-100 text-gray-700", actionText="標記完成", actionFn=`updateTaskStatus('${escapeHtml(t.id)}','完成')`;
+        if(t.status==="待辦"){ badge="bg-red-100 text-red-800"; actionText="開始進行"; actionFn=`updateTaskStatus('${escapeHtml(t.id)}','進行中')`; }
+        else if(t.status==="進行中"){ badge="bg-yellow-100 text-yellow-800"; }
+        else if(t.status==="完成"){ badge="bg-secondary-green/20 text-secondary-green"; actionText="已完成"; actionFn=`showModal('已完成','此任務已標記完成，無法再操作。')`; }
+        else if(t.status==="更新"){ badge="bg-blue-100 text-blue-800"; actionText="查看詳情"; actionFn=`setView('details','${escapeHtml(t.projectId)}')`; }
+        return `
+          <div class="project-card bg-gray-50 p-4 rounded-lg border-l-4 ${ t.status==="待辦"?"border-red-500": t.status==="進行中"?"border-yellow-500": t.status==="完成"?"border-green-500":"border-blue-500"}">
+            <div class="flex justify-between items-start">
+              <div class="flex-grow">
+                <p class="font-bold text-lg text-gray-900">${escapeHtml(t.taskName||"")}</p>
+                <p class="text-xs text-gray-500">專案: <span class="font-medium text-primary-blue cursor-pointer hover:underline" onclick="setView('details','${escapeHtml(t.projectId)}')">${escapeHtml(project?.title || t.projectId || "")}</span></p>
+              </div>
+              <span class="px-3 py-1 text-xs font-semibold rounded-full ${badge}">${escapeHtml(t.status||"")}</span>
+            </div>
+            <div class="mt-2 text-sm text-gray-700 flex justify-between items-center">
+              <p><i data-lucide="user" class="w-4 h-4 inline mr-1"></i> 負責人: <span class="font-medium">${escapeHtml(t.assignee||"")}</span>
+                 <span class="ml-4"><i data-lucide="calendar" class="w-4 h-4 inline mr-1"></i> 期限: ${escapeHtml(t.dueDate||"")}</span></p>
+              <button onclick="${actionFn}" class="px-3 py-1 text-xs rounded-lg text-white ${ t.status!=="更新" ? "bg-secondary-green hover:bg-green-700" : "bg-blue-600 hover:bg-blue-700"}">${actionText}</button>
+            </div>
+          </div>`;
+      }).join("");
+      if(window.lucide?.createIcons) lucide.createIcons();
+    }
+
+    async function updateTaskStatus(taskId, newStatus){
+      if(!isAuthorized()){ showModal("請先登入","請先登入後再操作。"); return; }
+      try{
+        await updateDoc(doc(db, TASKS_COLLECTION_PATH, taskId), { status:newStatus, updatedAt: serverTimestamp() });
+      }catch(err){ console.error(err); showModal("錯誤", `更新任務狀態失敗：${err.message}`); }
+    }
+    window.updateTaskStatus = updateTaskStatus;
+
+    // 行事曆
+    function buildCalendarEventsForFC(){
+      return events.map(ev=>{
+        const start=ev.startDate, end=(ev.endDate && ev.endDate!==ev.startDate)?ev.endDate:ev.startDate;
+        return { id:ev.id, title:`${ev.title||""} (${ev.assignee||""})`, start, end, allDay:true,
+                 extendedProps:{ projectId: ev.projectId, assignee: ev.assignee, description: ev.description||"" } };
+      });
+    }
+    function renderCalendar(){
+      const c = document.getElementById("main-content");
+      c.innerHTML = `
+        <h2 class="text-3xl font-bold text-gray-800 mb-6 border-b pb-2 flex items-center">
+          <i data-lucide="calendar" class="w-7 h-7 mr-3 text-primary-blue"></i> 行事曆
+        </h2>
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div class="lg:col-span-2 bg-white p-4 rounded-xl shadow-lg"><div id="calendar"></div></div>
+          <div class="lg:col-span-1 bg-white p-6 rounded-xl shadow-lg h-fit">
+            <h3 class="text-xl font-semibold text-gray-800 mb-4 border-b pb-2">新增行事</h3>
+            <form id="new-event-form" class="space-y-4">
+              <div>
+                <label class="block text-sm font-medium text-gray-700">所屬專案</label>
+                <select id="evt-project-id" class="mt-1 block w-full rounded-md border-gray-300 p-2 border">
+                  ${ projects.length>0 ? projects.map(p=>`<option value="${escapeHtml(p.id)}">${escapeHtml(p.id)} - ${escapeHtml(p.title)}</option>`).join("") : '<option value="">請先新增專案</option>'}
+                </select>
+              </div>
+              <div><label class="block text-sm font-medium text-gray-700">標題</label><input type="text" id="evt-title" required class="mt-1 block w-full rounded-md border-gray-300 p-2 border"/></div>
+              <div><label class="block text-sm font-medium text-gray-700">參與者/負責人</label><select id="evt-assignee" class="mt-1 block w-full rounded-md border-gray-300 p-2 border">${ managerOptionsHtml() }</select></div>
+              <div class="grid grid-cols-2 gap-4">
+                <div><label class="block text-sm font-medium text-gray-700">開始日期</label><input type="date" id="evt-start" required class="mt-1 block w-full rounded-md border-gray-300 p-2 border"/></div>
+                <div><label class="block text-sm font-medium text-gray-700">結束日期</label><input type="date" id="evt-end" required class="mt-1 block w-full rounded-md border-gray-300 p-2 border"/></div>
+              </div>
+              <div><label class="block text-sm font-medium text-gray-700">說明（可選）</label><textarea id="evt-desc" rows="3" class="mt-1 block w-full rounded-md border-gray-300 p-2 border" placeholder="補充說明"></textarea></div>
+              <button type="submit" class="w-full py-2 bg-primary-blue text-white rounded-lg hover:bg-blue-800">新增行事</button>
+            </form>
+            <div id="event-form-feedback" class="mt-4 text-sm font-medium"></div>
+          </div>
+        </div>
+      `;
+      if(window.lucide?.createIcons) lucide.createIcons();
+
+      const calEl = document.getElementById("calendar");
+      if(calEl && window.FullCalendar){
+        if(calendarInstance) { calendarInstance.destroy(); calendarInstance=null; }
+        calendarInstance = new FullCalendar.Calendar(calEl, {
+          locale:"zh-tw", initialView:"dayGridMonth", height:700,
+          headerToolbar:{ left:"prev,next today", center:"title", right:"dayGridMonth,timeGridWeek,timeGridDay,listWeek" },
+          events: buildCalendarEventsForFC(),
+          dateClick:(info)=>{ const s=document.getElementById("evt-start"); const e=document.getElementById("evt-end"); if(s) s.value=info.dateStr; if(e) e.value=info.dateStr; },
+          eventClick:(info)=>{ const ev=info.event; const pId = ev.extendedProps?.projectId||""; const desc=ev.extendedProps?.description||""; showModal(ev.title, `專案: ${pId}\n負責: ${ev.extendedProps?.assignee||""}\n${desc?('說明: '+desc):''}`); }
+        }); calendarInstance.render();
+      }
+
+      document.getElementById("new-event-form")?.addEventListener("submit", async (e)=>{
+        e.preventDefault();
+        const feedback = document.getElementById("event-form-feedback");
+        if(!isAuthorized()){ showModal("請先登入","請先登入後再新增行事。"); return; }
+        const projectId = document.getElementById("evt-project-id").value;
+        const title = document.getElementById("evt-title").value;
+        const assignee = document.getElementById("evt-assignee").value;
+        const startDate = document.getElementById("evt-start").value;
+        const endDate = document.getElementById("evt-end").value;
+        const description = document.getElementById("evt-desc").value;
+        if(!projectId){ feedback.className="mt-4 text-sm text-red-600"; feedback.textContent="請先選擇專案。"; return; }
+        try{
+          await addDoc(collection(db, EVENTS_COLLECTION_PATH), {
+            projectId, title, assignee, startDate, endDate, description,
+            createdAt: serverTimestamp(), reporterId: currentUserId
+          });
+          feedback.className="mt-4 text-sm text-secondary-green"; feedback.textContent="行事已新增！";
+          document.getElementById("new-event-form").reset(); renderCalendar();
+        }catch(err){ console.error(err); feedback.className="mt-4 text-sm text-red-600"; feedback.textContent="新增行事失敗：資料庫錯誤。"; }
+      });
+    }
+
+    // 報告、社群（原樣，略：已於上方函式中保留）
+
+    // 側欄展開/收合
     window.toggleSidebar = function(force){
       const sb = document.getElementById('app-sidebar');
       const main = document.getElementById('app-main');
-      const nextExpanded = (typeof force === 'boolean') ? force : !sb.classList.contains('expanded');
+      const isCurrentlyExpanded = sb.classList.contains('expanded');
+      const nextExpanded = (typeof force === 'boolean') ? force : !isCurrentlyExpanded;
       sb.classList.toggle('expanded', nextExpanded);
       sb.classList.toggle('collapsed', !nextExpanded);
       sb.style.width = nextExpanded ? '240px' : '72px';
       if(main) main.style.marginLeft = nextExpanded ? '240px' : '72px';
       const btn = document.getElementById('btn-toggle');
-      if(btn){ btn.innerHTML = nextExpanded ? '<i data-lucide="panel-left-close" class="w-5 h-5"></i>' : '<i data-lucide="panel-left-open" class="w-5 h-5"></i>'; }
-      if(window.lucide?.createIcons) try{ lucide.createIcons(); }catch{}
+      if(btn){
+        btn.title = nextExpanded ? '收合' : '展開';
+        btn.innerHTML = nextExpanded ? '<i data-lucide="panel-left-close" class="nav-icon"></i>' : '<i data-lucide="panel-left-open" class="nav-icon"></i>';
+      }
       try{ localStorage.setItem('sidebarExpanded', nextExpanded ? '1' : '0'); }catch{}
+      if(window.lucide?.createIcons) lucide.createIcons();
     };
-
-    // ============ Firebase 初始化 ============
-    async function choosePersistence(auth){
-      const candidates = [indexedDBLocalPersistence, browserLocalPersistence, browserSessionPersistence, inMemoryPersistence];
-      for(const p of candidates){
-        try{ await setPersistence(auth, p); logDbg('OK','persistence selected', {name: p.type || (p.toString?.() || 'unknown')}); return p; }
-        catch(e){ logDbg('WARN','persistence failed', {target:p.type || 'unknown', code:e?.code, message:e?.message}); }
-      }
-      return null;
-    }
-
-    async function initFirebase(){
-      if(auth) return;
-      if(!firebaseConfig){ showModal("設定錯誤","缺少 Firebase 設定"); return; }
-
-      const app = initializeApp(firebaseConfig);
-      auth = getAuth(app); auth.languageCode='zh-TW';
-      db = getFirestore(app);
-      storage = getStorage(app);
-
-      landingLoading?.classList.remove("hidden");
-      resetBtn?.classList.add('hidden');
-      openWindowBtn?.classList.toggle('hidden', !isLikelyInAppBrowser());
-      setDbgState('restoring','warn'); logDbg('INFO','init: restoring...', {ua:navigator.userAgent, ssOK: canUseSessionStorage(), inApp:isLikelyInAppBrowser(), path: location.pathname});
-
-      let settled=false;
-      const safetyTimer=setTimeout(()=>{
-        if(!settled){
-          logDbg('WARN','restore-timeout','no auth state after 7s');
-          landingLoading?.classList.add("hidden");
-          btnGoogle?.removeAttribute('disabled');
-          resetBtn?.classList.remove('hidden');
-          setDbgState('timeout','warn');
-        }
-      },7000);
-
-      onAuthStateChanged(auth, (user)=>{
-        logDbg('INFO','onAuthStateChanged', !!user ? 'user present' : 'no user');
-        applyUser(user);
-        btnGoogle?.removeAttribute('disabled');
-      });
-
-      try{ await choosePersistence(auth); }catch(e){ logDbg('ERR','choosePersistence error', {code:e?.code, message:e?.message}); }
-
-      // 若剛剛從 redirect 回來，嘗試還原
-      const redirectedAt = redirectStartedMs();
-      if(redirectedAt){
-        try{
-          const rr = await getRedirectResult(auth);
-          if(rr?.user){
-            logDbg('OK','getRedirectResult user', {uid:rr.user.uid, email:rr.user.email});
-            applyUser(rr.user);
-          }else{
-            logDbg('INFO','getRedirectResult empty');
-          }
-        }catch(e){
-          logDbg('ERR','getRedirectResult error', {code:e?.code, message:e?.message});
-          if(e?.code === 'auth/unauthorized-domain'){
-            setBanner('error','Google 登入被拒（unauthorized-domain）。請到 Firebase Authentication → Authorized domains 加入 chylio.github.io。');
-          }
-        }finally{
-          clearRedirectFlag();
-        }
-      }
-
-      landingLoading?.classList.add("hidden");
-      settled=true; clearTimeout(safetyTimer);
-    }
-
-    function isAuthorized(){ return !!currentUserId; }
-
-    // ============ 資料狀態 ============
-    let managers=[]; const DEFAULT_MANAGERS=["蔡雅雯","陳乃菁","吳曉琪","蘇琬淳","楊穎潔","王小明","李小華","張曉安"];
-    let currentView="dashboard",selectedProjectId=null,calendarInstance=null;
-    let projects=[],tasks=[],events=[],files=[],communityPosts=[],budgetCaps={personnelCap:0,operatingCap:0,equipmentCap:0};
-
-    // ============ 監聽與處理 ============
-    function setActiveByView(view){
-      document.querySelectorAll('#app-sidebar .nav-item').forEach(el=>{ el.classList.toggle('active', el.getAttribute('data-view') === view); });
-      if(window.lucide?.createIcons) try{ lucide.createIcons(); }catch{}
-    }
-    window.setView=function(view,arg){
-      currentView=view; setActiveByView(view);
-      if(view==="dashboard") renderDashboard();
-      else if(view==="tasks") renderTaskManagement();
-      else if(view==="calendar") renderCalendar();
-      else if(view==="report") renderReport();
-      else if(view==="community") renderCommunity();
-      else if(view==="details"){ selectedProjectId=(typeof arg==="string"&&arg)?arg:(projects[0]?.id||null); renderProjectDetails(selectedProjectId); }
-    };
-    function rerenderByView(){
-      if(currentView==="dashboard") renderDashboard();
-      if(currentView==="tasks") renderTaskManagement();
-      if(currentView==="calendar") renderCalendar(true);
-      if(currentView==="report") renderReport();
-      if(currentView==="community") renderCommunity();
-      if(currentView==="details") renderProjectDetails(selectedProjectId);
-    }
-
-    function initializeSystem(withData){
-      currentView="dashboard"; renderDashboard(true);
-      if(withData) startRealtimeListeners();
-      const saved = (()=>{ try{ return localStorage.getItem('sidebarExpanded')!=='0'; }catch{return true} })();
-      toggleSidebar(saved);
-    }
-
-    function handleDbError(source, err){
-      console.error('Firestore error ['+source+']', err);
-      logDbg('ERR','onSnapshot '+source, {code: err?.code, message: err?.message});
-      if(err?.code === 'permission-denied'){
-        setBanner('error', `資料庫讀取被拒絕（permission-denied）。<br/>
-          請到 Firebase Firestore Rules，暫時允許已登入使用者讀寫
-          <code>artifacts/${APP_ID}/public/**</code>。`);
-      }else{
-        setBanner('warn', `無法讀取 ${source} 資料：${err?.message || '未知錯誤'}`);
-      }
-    }
-
-    function startRealtimeListeners(){
-      if(!db || listenersStarted) return; listenersStarted=true;
-
-      onSnapshot(
-        query(collection(db, PROJECTS_COLLECTION_PATH), orderBy("createdAt","desc")),
-        (s)=>{ projects=s.docs.map(d=>({id:d.id,...d.data()})); clearBanner(); rerenderByView(); },
-        (e)=> handleDbError('projects', e)
-      );
-      onSnapshot(
-        query(collection(db, TASKS_COLLECTION_PATH), orderBy("createdAt","desc")),
-        (s)=>{ tasks=s.docs.map(d=>({id:d.id,...d.data()})); if(currentView==="tasks") renderTaskManagement(); },
-        (e)=> handleDbError('tasks', e)
-      );
-      onSnapshot(
-        query(collection(db, EVENTS_COLLECTION_PATH), orderBy("startDate","asc")),
-        (s)=>{ events=s.docs.map(d=>({id:d.id,...d.data()})); if(currentView==="calendar") renderCalendar(true); },
-        (e)=> handleDbError('events', e)
-      );
-      onSnapshot(
-        query(collection(db, FILES_COLLECTION_PATH), orderBy("uploadedAt","desc")),
-        (s)=>{ files=s.docs.map(d=>({id:d.id,...d.data()})); if(currentView==="details") renderProjectDetails(selectedProjectId); },
-        (e)=> handleDbError('files', e)
-      );
-      onSnapshot(
-        doc(db, SETTINGS_DOC_PATH),
-        (snap)=>{ if(snap.exists()){ const d=snap.data()||{}; budgetCaps={ personnelCap:n(d.personnelCap), operatingCap:n(d.operatingCap), equipmentCap:n(d.equipmentCap) }; } else { budgetCaps={personnelCap:0,operatingCap:0,equipmentCap:0}; } if(currentView==='dashboard') renderDashboard(); },
-        (e)=> handleDbError('settings', e)
-      );
-      onSnapshot(
-        query(collection(db, MANAGERS_COLLECTION_PATH), orderBy("name","asc")),
-        (s)=>{ managers=s.docs.map(d=>({id:d.id,...d.data()})); },
-        (e)=> handleDbError('managers', e)
-      );
-      onSnapshot(
-        query(collection(db, COMMUNITY_COLLECTION_PATH), orderBy("createdAt","desc")),
-        (s)=>{ communityPosts=s.docs.map(d=>({id:d.id,...d.data()})); if(currentView==="community") renderCommunity(); },
-        (e)=> handleDbError('community', e)
-      );
-    }
-
-    // ============ 儀表板（每個專案呈現） ============
-    function renderDashboard(isBoot=false){
-      const c=document.getElementById("main-content"); if(!c) return;
-
-      // 總覽摘要（可保留）
-      const totalProjects=projects.length;
-      const completed=projects.filter(p=> (n(p.progress))>=95 ).length;
-      const totalBudget=projects.reduce((s,p)=>s+n(p.budget),0);
-
-      // 專案清單
-      const cards = projects.map(p=>{
-        const personnel=n(p.personnelBudget), operating=n(p.operatingBudget), equipment=n(p.equipmentBudget);
-        const total = personnel+operating+equipment || n(p.budget);
-        const progress = n(p.progress)||0;
-        return `
-          <div class="project-card bg-white p-5 rounded-xl shadow border border-gray-100">
-            <div class="flex items-start justify-between">
-              <div>
-                <div class="text-xs text-gray-500">計畫編號</div>
-                <div class="text-sm font-semibold">${p.projectCode || '-'}</div>
-              </div>
-              <div class="text-xs px-2 py-1 rounded bg-blue-50 text-blue-700">${p.status||'進行中'}</div>
-            </div>
-            <div class="mt-2 text-lg font-bold text-gray-900">${p.title || '(未命名專案)'}</div>
-            <div class="mt-1 text-sm text-gray-600">專案管理者：<b>${p.manager||'-'}</b></div>
-            <div class="text-sm text-gray-600">計畫主持人：<b>${p.pi||'-'}</b></div>
-
-            <div class="mt-3 text-xs text-gray-500">進度</div>
-            <div class="w-full bg-gray-200 rounded-full h-2">
-              <div class="h-2 rounded-full ${progress>=95?'bg-green-500':'bg-blue-700'}" style="width:${Math.max(0,Math.min(100,progress))}%"></div>
-            </div>
-            <div class="mt-2 text-xs text-gray-600">${progress}%</div>
-
-            <div class="grid grid-cols-3 gap-2 mt-3 text-sm">
-              <div class="bg-gray-50 rounded p-2">
-                <div class="text-xs text-gray-500">人事費</div>
-                <div class="font-semibold">${fmtMoney(personnel)}</div>
-              </div>
-              <div class="bg-gray-50 rounded p-2">
-                <div class="text-xs text-gray-500">設備費</div>
-                <div class="font-semibold">${fmtMoney(equipment)}</div>
-              </div>
-              <div class="bg-gray-50 rounded p-2">
-                <div class="text-xs text-gray-500">業務費</div>
-                <div class="font-semibold">${fmtMoney(operating)}</div>
-              </div>
-            </div>
-            <div class="mt-2 text-xs text-gray-500">總預算：<b>${fmtMoney(total)}</b></div>
-
-            <div class="mt-4 flex gap-2">
-              <button class="btn btn-primary" onclick="setView('details','${p.id}')"><i data-lucide='eye'></i>查看</button>
-              <button class="btn btn-gray" onclick="openProjectModal(${JSON.stringify({id:p.id}).replace(/"/g,'&quot;')})"><i data-lucide='edit-3'></i>快速編輯</button>
-            </div>
-          </div>
-        `;
-      }).join('');
-
-      c.innerHTML=`
-        <div class="flex items-center justify-between mb-4">
-          <h2 class="text-3xl font-bold text-gray-800"><i data-lucide="layout-dashboard" class="w-7 h-7 mr-3 text-blue-800"></i>儀表板</h2>
-          <div class="flex gap-2">
-            <button class="btn btn-primary" onclick="openProjectModal()"><i data-lucide="plus"></i>新增專案</button>
-          </div>
-        </div>
-
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
-          <div class="card">
-            <div class="text-sm text-gray-500">專案總數</div>
-            <div class="text-2xl font-extrabold">${totalProjects}</div>
-          </div>
-          <div class="card">
-            <div class="text-sm text-gray-500">接近完成</div>
-            <div class="text-2xl font-extrabold">${completed}</div>
-          </div>
-          <div class="card">
-            <div class="text-sm text-gray-500">總預算</div>
-            <div class="text-2xl font-extrabold">${fmtMoney(totalBudget)}</div>
-          </div>
-        </div>
-
-        <div class="bg-white p-4 rounded-xl shadow mb-4">
-          <div class="text-gray-800 font-semibold mb-2 flex items-center"><i data-lucide="folder-kanban" class="w-5 h-5 mr-2 text-blue-800"></i>所有專案</div>
-          ${projects.length===0 ? `
-            <div class="text-center py-10">
-              <i data-lucide="alert-triangle" class="w-10 h-10 text-yellow-500 mx-auto mb-3"></i>
-              <p class="text-gray-700 mb-3">目前沒有專案資料。</p>
-              <button onclick="seedDemoData()" class="px-4 py-2 bg-blue-800 text-white rounded-lg hover:bg-blue-700">
-                <i data-lucide="plus" class="w-5 h-5 inline mr-1"></i> 建立示範資料
-              </button>
-            </div>
-          ` : `
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">${cards}</div>
-          `}
-        </div>
-      `;
-      if(window.lucide?.createIcons) try{ lucide.createIcons(); }catch{}
-    }
-
-    async function seedDemoData(){
-      if(!isAuthorized()){ showModal("請先登入","請先登入後再建立示範資料。"); return; }
-      try{
-        const pRef = await addDoc(collection(db, PROJECTS_COLLECTION_PATH), {
-          projectCode: "TP-2025-001",
-          title: "示範專案 A",
-          manager: "蔡雅雯",
-          pi: "王教授",
-          personnelBudget: 400000,
-          equipmentBudget: 300000,
-          operatingBudget: 300000,
-          budget: 1000000,
-          progress: 10,
-          status: "進行中",
-          createdAt: serverTimestamp(),
-          reporterId: currentUserId
-        });
-        await addDoc(collection(db, TASKS_COLLECTION_PATH), {
-          title: "啟動會議",
-          projectId: pRef.id,
-          assignee: "王小明",
-          dueDate: new Date().toISOString().slice(0,10),
-          status: "Todo",
-          priority: "High",
-          createdAt: serverTimestamp(),
-          creatorId: currentUserId
-        });
-        await addDoc(collection(db, EVENTS_COLLECTION_PATH), {
-          title: "啟動會議",
-          startDate: new Date().toISOString().slice(0,10),
-          endDate: new Date().toISOString().slice(0,10),
-          allDay: true,
-          createdAt: serverTimestamp(),
-          creatorId: currentUserId
-        });
-        setBanner('success', "已建立示範資料。");
-      }catch(err){
-        handleDbError('seed', err);
-      }
-    }
-
-    // ============ 任務 ============
-    function managerOptionsHtml(selected=""){
-      const list=(managers.length>0?managers.map(m=>m.name).filter(Boolean):DEFAULT_MANAGERS);
-      return list.map(m=>`<option value="${m}" ${m===selected?'selected':''}>${m}</option>`).join("");
-    }
-    function projectOptionsHtml(selected=""){
-      return projects.map(p=>`<option value="${p.id}" ${p.id===selected?'selected':''}>${p.title||p.id}</option>`).join("");
-    }
-    function statusChip(s){
-      if(s==='Done') return '<span class="chip" style="background:#ecfdf5;color:#065f46">完成</span>';
-      if(s==='InProgress') return '<span class="chip" style="background:#ecfeff;color:#155e75">進行中</span>';
-      return '<span class="chip" style="background:#eef2ff;color:#3730a3">待辦</span>';
-    }
-    function renderTaskManagement(){
-      const c=document.getElementById("main-content"); if(!c) return;
-      const q=`
-        <div class="flex items-center justify-between mb-4">
-          <h2 class="text-3xl font-bold text-gray-800 border-b pb-2 flex items-center"><i data-lucide="clipboard-check" class="w-7 h-7 mr-3 text-blue-800"></i>任務管理</h2>
-          <div class="flex gap-2">
-            <input id="task-search" placeholder="搜尋任務/負責人" class="border rounded-lg px-3 py-2 text-sm"/>
-            <select id="task-filter-status" class="border rounded-lg px-3 py-2 text-sm">
-              <option value="">全部狀態</option>
-              <option value="Todo">待辦</option>
-              <option value="InProgress">進行中</option>
-              <option value="Done">已完成</option>
-            </select>
-            <button class="btn btn-primary" id="btn-add-task"><i data-lucide="plus"></i>新增任務</button>
-          </div>
-        </div>
-        <div class="card overflow-auto">
-          <table class="table text-sm">
-            <thead><tr>
-              <th>任務</th><th>所屬專案</th><th>負責人</th><th>期限</th><th>優先</th><th>狀態</th><th>動作</th>
-            </tr></thead>
-            <tbody id="task-tbody"></tbody>
-          </table>
-        </div>
-      `;
-      c.innerHTML = q;
-
-      const searchEl=document.getElementById('task-search');
-      const filterEl=document.getElementById('task-filter-status');
-      const tbody=document.getElementById('task-tbody');
-
-      function renderRows(){
-        const kw=(searchEl.value||"").trim().toLowerCase();
-        const st=filterEl.value||"";
-        const rows=tasks.filter(t=>{
-          const hitKw=!kw || (String(t.title||'').toLowerCase().includes(kw) || String(t.assignee||'').toLowerCase().includes(kw));
-          const hitSt=!st || (t.status===st);
-          return hitKw && hitSt;
-        }).map(t=>{
-          const pj=projects.find(p=>p.id===t.projectId);
-          return `<tr>
-            <td class="font-semibold">${t.title||''}</td>
-            <td>${pj? (pj.title||pj.id) : (t.projectId||'-')}</td>
-            <td>${t.assignee||''}</td>
-            <td>${t.dueDate||''}</td>
-            <td>${t.priority||''}</td>
-            <td>${statusChip(t.status||'Todo')}</td>
-            <td class="whitespace-nowrap">
-              <button class="btn btn-gray" data-edit="${t.id}"><i data-lucide="edit-3"></i>編輯</button>
-              <button class="btn btn-danger" data-del="${t.id}"><i data-lucide="trash-2"></i>刪除</button>
-            </td>
-          </tr>`;
-        }).join('') || `<tr><td colspan="7" class="text-gray-500 text-center py-6">尚無任務</td></tr>`;
-        tbody.innerHTML = rows;
-        if(window.lucide?.createIcons) try{ lucide.createIcons(); }catch{}
-      }
-      renderRows();
-
-      searchEl.oninput=renderRows; filterEl.onchange=renderRows;
-
-      document.getElementById('btn-add-task').onclick = () => openTaskModal();
-      tbody.addEventListener('click', async (e)=>{
-        const btn = e.target.closest('button');
-        if(!btn) return;
-        const id = btn.getAttribute('data-edit') || btn.getAttribute('data-del');
-        const t = tasks.find(x=>x.id===id);
-        if(btn.hasAttribute('data-edit')) openTaskModal(t);
-        if(btn.hasAttribute('data-del')){
-          if(confirm(`確定刪除任務「${t?.title||id}」？`)){
-            await deleteDoc(doc(db, TASKS_COLLECTION_PATH, id)).catch(err=>handleDbError('task-delete',err));
-          }
-        }
-      });
-    }
-
-    function openTaskModal(task){
-      const isEdit=!!task;
-      const modal=document.createElement('div');
-      modal.className='modal-backdrop';
-      modal.innerHTML=`
-        <div class="modal-card">
-          <div class="flex items-center justify-between mb-3">
-            <div class="text-lg font-bold">${isEdit?'編輯任務':'新增任務'}</div>
-            <button class="btn btn-gray" id="m-close">關閉</button>
-          </div>
-          <div class="space-y-3">
-            <div class="form-row">
-              <div><label class="text-sm text-gray-600">任務名稱</label><input id="m-title" class="w-full border rounded-lg p-2" value="${task?.title||''}"></div>
-              <div><label class="text-sm text-gray-600">所屬專案</label>
-                <select id="m-project" class="w-full border rounded-lg p-2">${projectOptionsHtml(task?.projectId||'')}</select>
-              </div>
-            </div>
-            <div class="form-row">
-              <div><label class="text-sm text-gray-600">負責人</label>
-                <select id="m-assignee" class="w-full border rounded-lg p-2">${managerOptionsHtml(task?.assignee||'')}</select>
-              </div>
-              <div><label class="text-sm text-gray-600">期限</label><input id="m-due" type="date" class="w-full border rounded-lg p-2" value="${task?.dueDate||''}"></div>
-            </div>
-            <div class="form-row">
-              <div><label class="text-sm text-gray-600">優先</label>
-                <select id="m-pri" class="w-full border rounded-lg p-2">
-                  ${['Low','Medium','High','Urgent'].map(p=>`<option ${task?.priority===p?'selected':''}>${p}</option>`).join('')}
-                </select>
-              </div>
-              <div><label class="text-sm text-gray-600">狀態</label>
-                <select id="m-st" class="w-full border rounded-lg p-2">
-                  <option value="Todo" ${(!task || task.status==='Todo')?'selected':''}>待辦</option>
-                  <option value="InProgress" ${(task?.status==='InProgress')?'selected':''}>進行中</option>
-                  <option value="Done" ${(task?.status==='Done')?'selected':''}>完成</option>
-                </select>
-              </div>
-            </div>
-            <div>
-              <label class="text-sm text-gray-600">說明</label>
-              <textarea id="m-desc" rows="3" class="w-full border rounded-lg p-2" placeholder="補充說明...">${task?.description||''}</textarea>
-            </div>
-            <div class="flex justify-end gap-2">
-              <button class="btn btn-gray" id="m-close2">取消</button>
-              <button class="btn btn-primary" id="m-save">儲存</button>
-            </div>
-          </div>
-        </div>`;
-      document.body.appendChild(modal);
-      const close=()=>{ try{ document.body.removeChild(modal); }catch{} };
-      modal.querySelector('#m-close').onclick=close;
-      modal.querySelector('#m-close2').onclick=close;
-      modal.querySelector('#m-save').onclick = async ()=>{
-        const title=modal.querySelector('#m-title').value.trim();
-        const projectId=modal.querySelector('#m-project').value;
-        const assignee=modal.querySelector('#m-assignee').value;
-        const dueDate=modal.querySelector('#m-due').value;
-        const priority=modal.querySelector('#m-pri').value;
-        const status=modal.querySelector('#m-st').value;
-        const description=modal.querySelector('#m-desc').value.trim();
-        if(!title){ alert('請輸入任務名稱'); return; }
-        try{
-          if(isEdit){
-            await updateDoc(doc(db, TASKS_COLLECTION_PATH, task.id), { title, projectId, assignee, dueDate, priority, status, description, updatedAt: serverTimestamp() });
-          }else{
-            await addDoc(collection(db, TASKS_COLLECTION_PATH), { title, projectId, assignee, dueDate, priority, status, description, createdAt: serverTimestamp(), creatorId: currentUserId });
-          }
-          close();
-        }catch(err){ handleDbError('task-save', err); }
-      };
-    }
-
-    // ============ 行事曆 ============
-    function renderCalendar(keepInstance=false){
-      const c=document.getElementById("main-content"); if(!c) return;
-      c.innerHTML=`
-        <div class="flex items-center justify-between mb-4">
-          <h2 class="text-3xl font-bold text-gray-800 border-b pb-2 flex items-center"><i data-lucide="calendar" class="w-7 h-7 mr-3 text-blue-800"></i>行事曆</h2>
-          <div class="flex gap-2">
-            <button id="btn-add-event" class="btn btn-primary"><i data-lucide="plus"></i>新增事件</button>
-          </div>
-        </div>
-        <div id="calendar" class="bg-white rounded-xl shadow p-2"></div>
-      `;
-      if(window.lucide?.createIcons) try{ lucide.createIcons(); }catch{}
-
-      const el=document.getElementById('calendar');
-      const data = events.map(e=>({
-        id: e.id,
-        title: e.title || '未命名',
-        start: e.startDate,
-        end: e.endDate || e.startDate,
-        allDay: !!e.allDay
-      }));
-
-      if(calendarInstance && keepInstance){
-        const api = calendarInstance.getApi();
-        api.removeAllEvents();
-        data.forEach(evt => api.addEvent(evt));
-      }else{
-        calendarInstance = new FullCalendar.Calendar(el, {
-          initialView: 'dayGridMonth',
-          height: 'auto',
-          selectable: true,
-          headerToolbar: {
-            left: 'prev,next today',
-            center: 'title',
-            right: 'dayGridMonth,timeGridWeek,timeGridDay'
-          },
-          dateClick: info => openEventModal({ startDate: info.dateStr, endDate: info.dateStr, allDay: true }),
-          eventClick: info => {
-            const e = events.find(x=>x.id===info.event.id);
-            openEventModal(e || { id: info.event.id, title: info.event.title, startDate: info.event.startStr, endDate: info.event.endStr, allDay: info.event.allDay });
-          }
-        });
-        calendarInstance.render();
-        data.forEach(evt => calendarInstance.addEvent(evt));
-      }
-
-      document.getElementById('btn-add-event').onclick = ()=> openEventModal();
-    }
-
-    function openEventModal(event){
-      const isEdit=!!(event && event.id);
-      const modal=document.createElement('div');
-      modal.className='modal-backdrop';
-      modal.innerHTML=`
-        <div class="modal-card">
-          <div class="flex items-center justify-between mb-3">
-            <div class="text-lg font-bold">${isEdit?'編輯事件':'新增事件'}</div>
-            <button class="btn btn-gray" id="m-close">關閉</button>
-          </div>
-          <div class="space-y-3">
-            <div class="form-row">
-              <div><label class="text-sm text-gray-600">標題</label><input id="m-title" class="w-full border rounded-lg p-2" value="${event?.title||''}"></div>
-              <div><label class="text-sm text-gray-600">整天</label>
-                <select id="m-allday" class="w-full border rounded-lg p-2"><option value="1" ${event?.allDay?'selected':''}>是</option><option value="0" ${!event?.allDay?'selected':''}>否</option></select>
-              </div>
-            </div>
-            <div class="form-row">
-              <div><label class="text-sm text-gray-600">開始</label><input id="m-start" type="date" class="w-full border rounded-lg p-2" value="${event?.startDate||''}"></div>
-              <div><label class="text-sm text-gray-600">結束</label><input id="m-end" type="date" class="w-full border rounded-lg p-2" value="${event?.endDate||event?.startDate||''}"></div>
-            </div>
-            <div>
-              <label class="text-sm text-gray-600">備註</label>
-              <textarea id="m-notes" rows="3" class="w-full border rounded-lg p-2" placeholder="補充說明...">${event?.notes||''}</textarea>
-            </div>
-            <div class="flex justify-between">
-              ${isEdit?`<button class="btn btn-danger" id="m-del"><i data-lucide="trash-2"></i>刪除</button>`:'<span></span>'}
-              <div class="flex gap-2">
-                <button class="btn btn-gray" id="m-close2">取消</button>
-                <button class="btn btn-primary" id="m-save">儲存</button>
-              </div>
-            </div>
-          </div>
-        </div>`;
-      document.body.appendChild(modal);
-      const close=()=>{ try{ document.body.removeChild(modal); }catch{} };
-      modal.querySelector('#m-close').onclick=close;
-      modal.querySelector('#m-close2').onclick=close;
-
-      if(isEdit){
-        modal.querySelector('#m-del').onclick = async ()=>{
-          if(confirm('確定刪除此事件？')){
-            await deleteDoc(doc(db, EVENTS_COLLECTION_PATH, event.id)).catch(err=>handleDbError('event-delete',err));
-            close();
-          }
-        };
-      }
-
-      modal.querySelector('#m-save').onclick = async ()=>{
-        const title=modal.querySelector('#m-title').value.trim();
-        const allDay=modal.querySelector('#m-allday').value==='1';
-        const startDate=modal.querySelector('#m-start').value;
-        const endDate=modal.querySelector('#m-end').value||startDate;
-        const notes=modal.querySelector('#m-notes').value.trim();
-        if(!title || !startDate){ alert('請輸入標題與開始日期'); return; }
-        try{
-          if(isEdit){
-            await updateDoc(doc(db, EVENTS_COLLECTION_PATH, event.id), { title, startDate, endDate, allDay, notes, updatedAt: serverTimestamp() });
-          }else{
-            await addDoc(collection(db, EVENTS_COLLECTION_PATH), { title, startDate, endDate, allDay, notes, createdAt: serverTimestamp(), creatorId: currentUserId });
-          }
-          close();
-        }catch(err){ handleDbError('event-save', err); }
-      };
-      if(window.lucide?.createIcons) try{ lucide.createIcons(); }catch{}
-    }
-
-    // ============ 報告 ============
-    function renderReport(){
-      const c=document.getElementById("main-content"); if(!c) return;
-
-      const taskByStatus = ['Todo','InProgress','Done'].map(s=>({s, n: tasks.filter(t=> (t.status||'Todo')===s).length}));
-      const overdueTasks = tasks.filter(t=> t.dueDate && new Date(t.dueDate)<new Date() && (t.status||'')!=='Done');
-      const budgetByProject = projects.map(p=>{
-        const personnel = n(p.personnelBudget);
-        const operating = n(p.operatingBudget);
-        const equipment = n(p.equipmentBudget);
-        const used = personnel+operating+equipment; // 若有 used 欄位可替換
-        return { id:p.id, title:p.title||p.id, budget:n(p.budget)||used, used };
-      });
-
-      function exportCSV(){
-        const rows=[['ProjectCode','Project','Budget','Personnel','Equipment','Operating'],
-          ...projects.map(p=>[p.projectCode||'', p.title||'', n(p.budget)||n(p.personnelBudget)+n(p.equipmentBudget)+n(p.operatingBudget), n(p.personnelBudget), n(p.equipmentBudget), n(p.operatingBudget)])
-        ];
-        const csv=rows.map(r=>r.map(x=>`"${String(x).replaceAll('"','""')}"`).join(',')).join('\n');
-        const blob=new Blob([csv],{type:'text/csv;charset=utf-8;'});
-        const a=document.createElement('a');
-        a.href=URL.createObjectURL(blob);
-        a.download='project-budget.csv';
-        document.body.appendChild(a); a.click(); a.remove();
-      }
-
-      c.innerHTML=`
-        <div class="flex items-center justify-between mb-4">
-          <h2 class="text-3xl font-bold text-gray-800 border-b pb-2 flex items-center"><i data-lucide="file-text" class="w-7 h-7 mr-3 text-blue-800"></i>報告</h2>
-          <div class="flex gap-2">
-            <button class="btn btn-gray" id="btn-export"><i data-lucide="download"></i>匯出 CSV</button>
-          </div>
-        </div>
-
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-          <div class="card">
-            <div class="font-semibold mb-3">任務狀態統計</div>
-            <ul class="text-sm text-gray-700">
-              ${taskByStatus.map(x=>`<li>• ${x.s==='Todo'?'待辦':x.s==='InProgress'?'進行中':'完成'}：<b>${x.n}</b></li>`).join('')}
-              <li>• 逾期：<b class="text-red-600">${overdueTasks.length}</b></li>
-            </ul>
-          </div>
-          <div class="card">
-            <div class="font-semibold mb-3">專案預算</div>
-            <table class="table text-sm">
-              <thead><tr><th>編號</th><th>專案</th><th>總預算</th><th>人事</th><th>設備</th><th>業務</th></tr></thead>
-              <tbody>
-                ${projects.map(p=>`<tr>
-                  <td>${p.projectCode||''}</td>
-                  <td>${p.title||''}</td>
-                  <td>${fmtMoney(n(p.budget)||n(p.personnelBudget)+n(p.equipmentBudget)+n(p.operatingBudget))}</td>
-                  <td>${fmtMoney(n(p.personnelBudget))}</td>
-                  <td>${fmtMoney(n(p.equipmentBudget))}</td>
-                  <td>${fmtMoney(n(p.operatingBudget))}</td>
-                </tr>`).join('') || '<tr><td colspan="6" class="text-gray-500">無資料</td></tr>'}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      `;
-      document.getElementById('btn-export').onclick = exportCSV;
-      if(window.lucide?.createIcons) try{ lucide.createIcons(); }catch{}
-    }
-
-    // ============ 社群 ============
-    function renderCommunity(){
-      const c=document.getElementById("main-content"); if(!c) return;
-      const list=communityPosts;
-      c.innerHTML=`
-        <h2 class="text-3xl font-bold text-gray-800 mb-4 border-b pb-2 flex items-center"><i data-lucide="messages-square" class="w-7 h-7 mr-3 text-blue-800"></i>資訊交流</h2>
-        <div class="card mb-4">
-          <div class="form-row">
-            <input id="post-title" class="border rounded-lg p-2" placeholder="標題">
-            <input id="post-tag" class="border rounded-lg p-2" placeholder="標籤（選填）">
-          </div>
-          <textarea id="post-content" rows="3" class="w-full border rounded-lg p-2 mt-2" placeholder="分享訊息、公告或討論..."></textarea>
-          <div class="flex justify-end mt-2">
-            <button class="btn btn-primary" id="btn-post"><i data-lucide="send"></i>發佈</button>
-          </div>
-        </div>
-        <div id="post-list" class="space-y-3"></div>
-      `;
-      const listEl=document.getElementById('post-list');
-      listEl.innerHTML = list.map(p=>`
-        <div class="card">
-          <div class="flex justify-between">
-            <div class="font-semibold">${p.title||'(無標題)'} ${p.tag?`<span class="chip" style="background:#eef2ff;color:#3730a3">#${p.tag}</span>`:''}</div>
-            ${(p.authorId===currentUserId)?`<button class="btn btn-danger" data-del="${p.id}"><i data-lucide="trash-2"></i>刪除</button>`:''}
-          </div>
-          <div class="text-sm text-gray-700 mt-1 whitespace-pre-wrap">${p.content||''}</div>
-          <div class="text-xs text-gray-500 mt-1">${p.authorName||p.authorEmail||''} · ${tsToDateStr(p.createdAt)}</div>
-        </div>
-      `).join('') || '<div class="text-gray-500">目前沒有貼文</div>';
-
-      document.getElementById('btn-post').onclick = async ()=>{
-        const title=document.getElementById('post-title').value.trim();
-        const tag=document.getElementById('post-tag').value.trim();
-        const content=document.getElementById('post-content').value.trim();
-        if(!content){ alert('請輸入內容'); return; }
-        try{
-          await addDoc(collection(db, COMMUNITY_COLLECTION_PATH), {
-            title, tag, content,
-            authorId: currentUserId, authorEmail: userProfile.email||'', authorName: userProfile.displayName||'',
-            createdAt: serverTimestamp()
-          });
-          document.getElementById('post-title').value='';
-          document.getElementById('post-tag').value='';
-          document.getElementById('post-content').value='';
-        }catch(err){ handleDbError('post-add',err); }
-      };
-      listEl.addEventListener('click', async (e)=>{
-        const btn=e.target.closest('button');
-        if(!btn) return;
-        if(btn.hasAttribute('data-del')){
-          const id=btn.getAttribute('data-del');
-          if(confirm('確定刪除此貼文？')) await deleteDoc(doc(db, COMMUNITY_COLLECTION_PATH, id)).catch(err=>handleDbError('post-del',err));
-        }
-      });
-      if(window.lucide?.createIcons) try{ lucide.createIcons(); }catch{}
-    }
-
-    // ============ 專案詳情 + 檔案（含新增專案表格） ============
-    function renderProjectDetails(projectId){
-      const c=document.getElementById("main-content"); if(!c) return;
-
-      const project = projects.find(p=>p.id===projectId);
-      const fileList = files.filter(f=>f.projectId===projectId);
-
-      c.innerHTML=`
-        <div class="flex items-center justify-between mb-4">
-          <h2 class="text-3xl font-bold text-gray-800 border-b pb-2 flex items-center"><i data-lucide="layout-dashboard" class="w-7 h-7 mr-3 text-blue-800"></i>專案詳情</h2>
-          <div class="flex gap-2">
-            <select id="pd-project" class="border rounded-lg px-3 py-2">
-              ${projects.map(p=>`<option value="${p.id}" ${p.id===projectId?'selected':''}>${p.projectCode?`[${p.projectCode}] `:''}${p.title||p.id}</option>`).join('')}
-            </select>
-            <button class="btn btn-primary" id="btn-new-project"><i data-lucide="plus"></i>新增專案</button>
-          </div>
-        </div>
-
-        ${project? `
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <div class="card md:col-span-2">
-            <div class="font-semibold mb-2">基本資訊</div>
-            <table class="table text-sm">
-              <tbody>
-                <tr><th style="width:150px">計畫編號</th><td>${project.projectCode||''}</td></tr>
-                <tr><th>專案名稱</th><td>${project.title||''}</td></tr>
-                <tr><th>專案管理者</th><td>${project.manager||''}</td></tr>
-                <tr><th>計畫主持人</th><td>${project.pi||''}</td></tr>
-                <tr><th>狀態/進度</th><td>${project.status||''} / ${n(project.progress)||0}%</td></tr>
-              </tbody>
-            </table>
-            <div class="mt-4 font-semibold">預算</div>
-            <table class="table text-sm">
-              <thead><tr><th>項目</th><th>金額</th></tr></thead>
-              <tbody>
-                <tr><td>人事費</td><td>${fmtMoney(n(project.personnelBudget))}</td></tr>
-                <tr><td>設備費</td><td>${fmtMoney(n(project.equipmentBudget))}</td></tr>
-                <tr><td>業務費</td><td>${fmtMoney(n(project.operatingBudget))}</td></tr>
-                <tr><td><b>合計</b></td><td><b>${fmtMoney(n(project.personnelBudget)+n(project.equipmentBudget)+n(project.operatingBudget))}</b></td></tr>
-              </tbody>
-            </table>
-            <div class="mt-3">
-              <button class="btn btn-gray" id="btn-edit-project"><i data-lucide="edit-3"></i>編輯</button>
-              <button class="btn btn-danger" id="btn-del-project"><i data-lucide="trash-2"></i>刪除</button>
-            </div>
-          </div>
-
-          <div class="card">
-            <div class="font-semibold mb-2">檔案</div>
-            <input id="file-input" type="file" class="block w-full text-sm" />
-            <button class="btn btn-primary mt-2" id="btn-upload"><i data-lucide="upload"></i>上傳</button>
-            <div class="text-xs text-gray-500 mt-1">示範上傳附件。</div>
-          </div>
-
-          <div class="card md:col-span-3">
-            <div class="font-semibold mb-2">檔案清單</div>
-            <table class="table text-sm">
-              <thead><tr><th>檔名</th><th>大小</th><th>上傳時間</th><th>動作</th></tr></thead>
-              <tbody id="file-tbody">
-                ${fileList.map(f=>`
-                  <tr>
-                    <td><a class="text-blue-700 underline" href="${f.downloadURL}" target="_blank" rel="noopener">${f.name}</a></td>
-                    <td>${(Number(f.size)||0).toLocaleString()} B</td>
-                    <td>${tsToDateStr(f.uploadedAt)}</td>
-                    <td><button class="btn btn-danger" data-del="${f.id}"><i data-lucide="trash-2"></i>刪除</button></td>
-                  </tr>`).join('') || '<tr><td colspan="4" class="text-gray-500">尚無檔案</td></tr>'}
-              </tbody>
-            </table>
-          </div>
-        </div>
-        ` : `
-          <div class="card">
-            <div class="text-gray-600">尚未選擇專案，請從上方選單選取或新增專案。</div>
-          </div>
-        `}
-      `;
-      if(window.lucide?.createIcons) try{ lucide.createIcons(); }catch{}
-
-      const projectSel=document.getElementById('pd-project');
-      if(projectSel) projectSel.onchange=()=> renderProjectDetails(projectSel.value);
-
-      const fileTbody=document.getElementById('file-tbody');
-      if(fileTbody) fileTbody.addEventListener('click', async (e)=>{
-        const btn=e.target.closest('button'); if(!btn) return;
-        if(btn.hasAttribute('data-del')){
-          const id=btn.getAttribute('data-del');
-          const f=files.find(x=>x.id===id);
-          if(!f) return;
-          if(confirm(`確定刪除檔案 ${f.name}？`)){
-            try{
-              if(f.storagePath){ await deleteObject(sRef(storage, f.storagePath)).catch(()=>{}); }
-              await deleteDoc(doc(db, FILES_COLLECTION_PATH, id));
-            }catch(err){ handleDbError('file-delete', err); }
-          }
-        }
-      });
-
-      const btnNew=document.getElementById('btn-new-project');
-      if(btnNew) btnNew.onclick = ()=> openProjectModal();
-
-      if(project){
-        document.getElementById('btn-edit-project').onclick = ()=> openProjectModal(project);
-        document.getElementById('btn-del-project').onclick = async ()=>{
-          if(confirm(`確定刪除專案「${project.title||project.id}」？（不會連動刪除任務/檔案）`)){
-            await deleteDoc(doc(db, PROJECTS_COLLECTION_PATH, project.id)).catch(err=>handleDbError('project-delete',err));
-            selectedProjectId = projects[0]?.id || null;
-            renderProjectDetails(selectedProjectId);
-          }
-        };
-        document.getElementById('btn-upload').onclick = async ()=>{
-          const input=document.getElementById('file-input');
-          const file=input?.files?.[0];
-          if(!file){ alert('請先選取檔案'); return; }
-          try{
-            const path=`${APP_ID}/${currentUserId}/${Date.now()}_${file.name}`;
-            const ref=sRef(storage, path);
-            const snap = await uploadBytesResumable(ref, file);
-            const url = await getDownloadURL(snap.ref);
-            await addDoc(collection(db, FILES_COLLECTION_PATH), {
-              projectId: project.id,
-              name: file.name,
-              size: file.size,
-              contentType: file.type,
-              storagePath: path,
-              downloadURL: url,
-              uploadedAt: serverTimestamp(),
-              uploaderId: currentUserId
-            });
-            setBanner('success','檔案已上傳');
-          }catch(err){ handleDbError('file-upload',err); }
-        };
-      }
-    }
-
-    // 新增/編輯專案表格（含：計畫編號、名稱、專案管理者、計畫主持人、人事/設備/業務費）
-    function openProjectModal(projectRef){
-      const project = projectRef && projectRef.id ? projects.find(p=>p.id===projectRef.id) : null;
-      const isEdit=!!project;
-      const modal=document.createElement('div');
-      modal.className='modal-backdrop';
-      modal.innerHTML=`
-        <div class="modal-card">
-          <div class="flex items-center justify-between mb-3">
-            <div class="text-lg font-bold">${isEdit?'編輯專案':'新增專案'}</div>
-            <button class="btn btn-gray" id="m-close">關閉</button>
-          </div>
-
-          <div class="space-y-3">
-            <table class="table text-sm">
-              <tbody>
-                <tr>
-                  <th style="width:140px">計畫編號</th>
-                  <td><input id="m-code" class="w-full border rounded-lg p-2" value="${project?.projectCode||''}" placeholder="例如 TP-2025-001"></td>
-                </tr>
-                <tr>
-                  <th>專案名稱</th>
-                  <td><input id="m-title" class="w-full border rounded-lg p-2" value="${project?.title||''}" placeholder="專案名稱"></td>
-                </tr>
-                <tr>
-                  <th>專案管理者</th>
-                  <td>
-                    <select id="m-manager" class="w-full border rounded-lg p-2">
-                      ${managerOptionsHtml(project?.manager||'')}
-                    </select>
-                  </td>
-                </tr>
-                <tr>
-                  <th>計畫主持人</th>
-                  <td><input id="m-pi" class="w-full border rounded-lg p-2" value="${project?.pi||''}" placeholder="主持人姓名"></td>
-                </tr>
-              </tbody>
-            </table>
-
-            <div class="font-semibold mt-2">預算（新台幣）</div>
-            <table class="table text-sm">
-              <thead><tr><th>人事費</th><th>設備費</th><th>業務費</th><th>合計</th></tr></thead>
-              <tbody>
-                <tr>
-                  <td><input id="m-b-person" type="number" min="0" class="w-full border rounded-lg p-2" value="${n(project?.personnelBudget)||0}"></td>
-                  <td><input id="m-b-equip" type="number" min="0" class="w-full border rounded-lg p-2" value="${n(project?.equipmentBudget)||0}"></td>
-                  <td><input id="m-b-oper" type="number" min="0" class="w-full border rounded-lg p-2" value="${n(project?.operatingBudget)||0}"></td>
-                  <td><input id="m-b-total" type="number" min="0" class="w-full border rounded-lg p-2" value="${n(project?.budget)||n(project?.personnelBudget)+n(project?.equipmentBudget)+n(project?.operatingBudget)||0}" disabled></td>
-                </tr>
-              </tbody>
-            </table>
-
-            <div class="form-row">
-              <div>
-                <label class="text-sm text-gray-600">狀態</label>
-                <select id="m-status" class="w-full border rounded-lg p-2">
-                  ${['進行中','規劃中','已結案','延後'].map(s=>`<option ${project?.status===s?'selected':''}>${s}</option>`).join('')}
-                </select>
-              </div>
-              <div>
-                <label class="text-sm text-gray-600">進度 %</label>
-                <input id="m-progress" type="number" min="0" max="100" class="w-full border rounded-lg p-2" value="${project?.progress??0}">
-              </div>
-            </div>
-
-            <div class="flex justify-end gap-2">
-              <button class="btn btn-gray" id="m-close2">取消</button>
-              ${isEdit?'<button class="btn btn-danger" id="m-del"><i data-lucide="trash-2"></i>刪除</button>':''}
-              <button class="btn btn-primary" id="m-save">儲存</button>
-            </div>
-          </div>
-        </div>`;
-      document.body.appendChild(modal);
-      const close=()=>{ try{ document.body.removeChild(modal); }catch{} };
-      modal.querySelector('#m-close').onclick=close;
-      modal.querySelector('#m-close2').onclick=close;
-
-      const bPerson=modal.querySelector('#m-b-person');
-      const bEquip =modal.querySelector('#m-b-equip');
-      const bOper  =modal.querySelector('#m-b-oper');
-      const bTotal =modal.querySelector('#m-b-total');
-      const recalc=()=>{ bTotal.value = (Number(bPerson.value||0)+Number(bEquip.value||0)+Number(bOper.value||0)); };
-      [bPerson,bEquip,bOper].forEach(i=> i.addEventListener('input', recalc));
-
-      if(isEdit){
-        const delBtn = modal.querySelector('#m-del');
-        delBtn.onclick = async ()=>{
-          if(confirm('確定刪除此專案？（不會連動刪除任務/檔案）')){
-            try{ await deleteDoc(doc(db, PROJECTS_COLLECTION_PATH, project.id)); close(); setView('dashboard'); }
-            catch(err){ handleDbError('project-delete',err); }
-          }
-        };
-      }
-
-      modal.querySelector('#m-save').onclick = async ()=>{
-        const projectCode=modal.querySelector('#m-code').value.trim();
-        const title=modal.querySelector('#m-title').value.trim();
-        const manager=modal.querySelector('#m-manager').value;
-        const pi     =modal.querySelector('#m-pi').value.trim();
-        const personnelBudget=Number(bPerson.value||0);
-        const equipmentBudget=Number(bEquip.value||0);
-        const operatingBudget=Number(bOper.value||0);
-        const budget=Number(bTotal.value||0);
-        const status=modal.querySelector('#m-status').value;
-        const progress=Math.max(0,Math.min(100,Number(modal.querySelector('#m-progress').value)||0));
-
-        if(!title){ alert('請輸入專案名稱'); return; }
-        try{
-          if(isEdit){
-            await updateDoc(doc(db, PROJECTS_COLLECTION_PATH, project.id), {
-              projectCode, title, manager, pi,
-              personnelBudget, equipmentBudget, operatingBudget, budget,
-              status, progress, updatedAt: serverTimestamp()
-            });
-            selectedProjectId = project.id;
-          }else{
-            const ref = await addDoc(collection(db, PROJECTS_COLLECTION_PATH), {
-              projectCode, title, manager, pi,
-              personnelBudget, equipmentBudget, operatingBudget, budget,
-              status, progress, createdAt: serverTimestamp(), reporterId: currentUserId
-            });
-            selectedProjectId = ref.id;
-          }
-          close();
-          setView('details', selectedProjectId);
-        }catch(err){ handleDbError('project-save',err); }
-      };
-
-      if(window.lucide?.createIcons) try{ lucide.createIcons(); }catch{}
-    }
 
     // 啟動
-    window.addEventListener('DOMContentLoaded', () => {
-      initFirebase().catch(e=>{
-        logDbg('ERR','initFirebase failed', {code:e?.code, message:e?.message});
-        landingLoading?.classList.add("hidden");
-        btnGoogle?.removeAttribute('disabled');
-        resetBtn?.classList.remove('hidden');
-        setBanner('error', '初始化失敗：' + (e?.message || '未知錯誤'));
-      });
-    });
+    window.addEventListener('DOMContentLoaded', ()=>{
+      const savedExpanded = (()=>{
+        try{ return localStorage.getItem('sidebarExpanded') !== '0'; }catch{ return true; }
+      })();
+      const sb = document.getElementById('app-sidebar');
+      const main = document.getElementById('app-main');
+      sb.classList.toggle('expanded', savedExpanded);
+      sb.classList.toggle('collapsed', !savedExpanded);
+      sb.style.width = savedExpanded ? '240px' : '72px';
+      if(main) main.style.marginLeft = savedExpanded ? '240px' : '72px';
+      const btn = document.getElementById('btn-toggle');
+      if(btn){
+        btn.title = savedExpanded ? '收合' : '展開';
+        btn.innerHTML = savedExpanded ? '<i data-lucide="panel-left-close" class="nav-icon"></i>' : '<i data-lucide="panel-left-open" class="nav-icon"></i>';
+      }
 
-    if(window.lucide?.createIcons) try{ lucide.createIcons(); }catch{}
+      currentView = "dashboard";
+      renderDashboard(true);
+      initFirebase();
+
+      if(window.lucide?.createIcons) lucide.createIcons();
+    });
   </script>
 </body>
 </html>

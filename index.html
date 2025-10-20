@@ -799,18 +799,18 @@
 
       const projectId = document.getElementById("proj-id").value.trim();
       const title = document.getElementById("proj-title").value.trim();
-      const selectedManager = document.getElementById("proj-manager").value;
+      const selectedManager = (document.getElementById("proj-manager")?.value || "").trim();
       const typedManager = (document.getElementById("proj-manager-new")?.value || "").trim();
-      const manager = typedManager || selectedManager;
+      const manager = (typedManager || selectedManager || "").trim();
 
       const personnelBudget = n(document.getElementById("proj-personnel").value);
       const operatingBudget = n(document.getElementById("proj-operating").value);
       const equipmentBudget = n(document.getElementById("proj-equipment").value);
-      const budget = n(document.getElementById("proj-budget").value);
+      const budget = personnelBudget + operatingBudget + equipmentBudget;
       const progress = Math.max(0, Math.min(100, n(document.getElementById("proj-progress").value)));
       const status = document.getElementById("proj-status").value.trim();
       const needIT = !!document.getElementById("proj-needit").checked;
-      const requiredRoles = Array.from(document.querySelectorAll("input[name='proj-role']:checked")).map(el=>el.value);
+      const requiredRoles = Array.from(document.querySelectorAll("#new-project-form input[name='proj-role']:checked")).map(el=>el.value);
 
       if(!isValidProjectId(projectId)){
         feedback.className="mt-2 text-sm text-red-600"; feedback.textContent="格式錯誤：專案編號僅能包含英數字、底線、連字號，長度 3–64。"; return;
@@ -852,11 +852,29 @@
           throw new Error("寫入後驗證失敗：資料庫未讀到新專案。請檢查 Firestore 規則或網路。");
         }
 
+        const saved = check.data() || {};
+        const mismatches = [];
+        if((saved.title || "").trim() !== title) mismatches.push("專案名稱");
+        if((saved.manager || "").trim() !== manager) mismatches.push("專案管理人");
+        if(n(saved.personnelBudget) !== personnelBudget) mismatches.push("人事費預算");
+        if(n(saved.operatingBudget) !== operatingBudget) mismatches.push("業務費預算");
+        if(n(saved.equipmentBudget) !== equipmentBudget) mismatches.push("設備費預算");
+        if(n(saved.budget) !== budget) mismatches.push("預算概算");
+        if(n(saved.progress) !== progress) mismatches.push("進度");
+        if((saved.status || "").trim() !== status) mismatches.push("狀態");
+        if(!!saved.needIT !== needIT) mismatches.push("是否需要資訊人員");
+        const savedRoles = Array.isArray(saved.requiredRoles) ? saved.requiredRoles.map(String).sort() : [];
+        const expectedRoles = requiredRoles.map(String).sort();
+        if(savedRoles.join("|") !== expectedRoles.join("|")) mismatches.push("需要的人力");
+        if(mismatches.length){
+          throw new Error(`寫入後驗證失敗：欄位不一致（${mismatches.join("、")}）。`);
+        }
+
         // SharePoint 備份（非阻斷）
         backupProjectToSharePoint(payload);
 
-        showModal("成功","專案新增成功！已同步備份（SharePoint Flow）。");
-        feedback.className="mt-2 text-sm text-green-600"; feedback.textContent="專案新增成功。";
+        showModal("成功","專案新增成功！已同步備份（SharePoint Flow），並通過欄位驗證。");
+        feedback.className="mt-2 text-sm text-green-600"; feedback.textContent="專案新增成功並驗證無誤。";
         (document.getElementById("new-project-form"))?.reset();
         document.getElementById("proj-budget").value = 0;
 

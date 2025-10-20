@@ -888,29 +888,72 @@
           throw new Error("寫入後驗證失敗：資料庫未讀到新專案。請檢查 Firestore 規則或網路。");
         }
 
-        const saved = check.data() || {};
-        const mismatches = [];
-        if(toCleanText(saved.title) !== title) mismatches.push("專案名稱");
-        if(toCleanText(saved.manager) !== manager) mismatches.push("專案管理人");
-        if(!numbersEqual(toNonNegativeNumber(saved.personnelBudget), personnelBudget)) mismatches.push("人事費預算");
-        if(!numbersEqual(toNonNegativeNumber(saved.operatingBudget), operatingBudget)) mismatches.push("業務費預算");
-        if(!numbersEqual(toNonNegativeNumber(saved.equipmentBudget), equipmentBudget)) mismatches.push("設備費預算");
-        if(!numbersEqual(toNonNegativeNumber(saved.budget), budget)) mismatches.push("預算概算");
-        if(!numbersEqual(toProgressPercent(saved.progress), progress)) mismatches.push("進度");
-        if(toCleanText(saved.status) !== status) mismatches.push("狀態");
-        if(!!saved.needIT !== needIT) mismatches.push("是否需要資訊人員");
+        let saved = check.data() || {};
+        const desired = {
+          title,
+          manager,
+          personnelBudget,
+          operatingBudget,
+          equipmentBudget,
+          budget,
+          progress,
+          status,
+          needIT,
+          requiredRoles: requiredRoles.slice()
+        };
+        const mismatchNames = [];
+        const fixPayload = {};
+        if(toCleanText(saved.title) !== desired.title){ mismatchNames.push("專案名稱"); fixPayload.title = desired.title; }
+        if(toCleanText(saved.manager) !== desired.manager){ mismatchNames.push("專案管理人"); fixPayload.manager = desired.manager; }
+        if(!numbersEqual(toNonNegativeNumber(saved.personnelBudget), desired.personnelBudget)){ mismatchNames.push("人事費預算"); fixPayload.personnelBudget = desired.personnelBudget; }
+        if(!numbersEqual(toNonNegativeNumber(saved.operatingBudget), desired.operatingBudget)){ mismatchNames.push("業務費預算"); fixPayload.operatingBudget = desired.operatingBudget; }
+        if(!numbersEqual(toNonNegativeNumber(saved.equipmentBudget), desired.equipmentBudget)){ mismatchNames.push("設備費預算"); fixPayload.equipmentBudget = desired.equipmentBudget; }
+        if(!numbersEqual(toNonNegativeNumber(saved.budget), desired.budget)){ mismatchNames.push("預算概算"); fixPayload.budget = desired.budget; }
+        if(!numbersEqual(toProgressPercent(saved.progress), desired.progress)){ mismatchNames.push("進度"); fixPayload.progress = desired.progress; }
+        if(toCleanText(saved.status) !== desired.status){ mismatchNames.push("狀態"); fixPayload.status = desired.status; }
+        if(!!saved.needIT !== desired.needIT){ mismatchNames.push("是否需要資訊人員"); fixPayload.needIT = desired.needIT; }
         const savedRoles = Array.isArray(saved.requiredRoles) ? saved.requiredRoles.map(String).sort() : [];
-        const expectedRoles = requiredRoles.map(String).sort();
-        if(savedRoles.join("|") !== expectedRoles.join("|")) mismatches.push("需要的人力");
-        if(mismatches.length){
-          throw new Error(`寫入後驗證失敗：欄位不一致（${mismatches.join("、")}）。`);
+        const expectedRoles = desired.requiredRoles.map(String).sort();
+        if(savedRoles.join("|") !== expectedRoles.join("|")){
+          mismatchNames.push("需要的人力");
+          fixPayload.requiredRoles = desired.requiredRoles.slice();
+        }
+
+        if(mismatchNames.length){
+          await updateDoc(target, fixPayload);
+          try{
+            saved = (await getDocFromServer(target)).data() || saved;
+          }catch(retryErr){
+            console.warn("[createProject] post-fix verification failed, fallback to cache", retryErr);
+            const retry = await getDoc(target);
+            if(retry.exists()) saved = retry.data() || saved;
+          }
+
+          const stillMismatch = [];
+          if(toCleanText(saved.title) !== desired.title) stillMismatch.push("專案名稱");
+          if(toCleanText(saved.manager) !== desired.manager) stillMismatch.push("專案管理人");
+          if(!numbersEqual(toNonNegativeNumber(saved.personnelBudget), desired.personnelBudget)) stillMismatch.push("人事費預算");
+          if(!numbersEqual(toNonNegativeNumber(saved.operatingBudget), desired.operatingBudget)) stillMismatch.push("業務費預算");
+          if(!numbersEqual(toNonNegativeNumber(saved.equipmentBudget), desired.equipmentBudget)) stillMismatch.push("設備費預算");
+          if(!numbersEqual(toNonNegativeNumber(saved.budget), desired.budget)) stillMismatch.push("預算概算");
+          if(!numbersEqual(toProgressPercent(saved.progress), desired.progress)) stillMismatch.push("進度");
+          if(toCleanText(saved.status) !== desired.status) stillMismatch.push("狀態");
+          if(!!saved.needIT !== desired.needIT) stillMismatch.push("是否需要資訊人員");
+          const savedRolesAfter = Array.isArray(saved.requiredRoles) ? saved.requiredRoles.map(String).sort() : [];
+          if(savedRolesAfter.join("|") !== expectedRoles.join("|")) stillMismatch.push("需要的人力");
+
+          if(stillMismatch.length){
+            throw new Error(`寫入後驗證失敗：欄位仍不一致（${stillMismatch.join("、")}）。`);
+          }
         }
 
         // SharePoint 備份（非阻斷）
         backupProjectToSharePoint(payload);
 
-        showModal("成功","專案新增成功！已同步備份（SharePoint Flow），並通過欄位驗證。");
-        feedback.className="mt-2 text-sm text-green-600"; feedback.textContent="專案新增成功並驗證無誤。";
+        const correctedSummary = mismatchNames.length ? `（已自動校正：${mismatchNames.join("、")}）` : "";
+        showModal("成功",`專案新增成功！已同步備份（SharePoint Flow），並通過欄位驗證。${correctedSummary}`);
+        feedback.className="mt-2 text-sm text-green-600";
+        feedback.textContent = `專案新增成功並驗證無誤。${mismatchNames.length ? `已自動修正欄位：${mismatchNames.join("、")}` : ""}`;
         (document.getElementById("new-project-form"))?.reset();
         document.getElementById("proj-budget").value = 0;
         const savedProject = {

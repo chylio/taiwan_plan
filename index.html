@@ -221,6 +221,7 @@
     const SETTINGS_DOC_PATH        = `artifacts/${APP_ID}/public/settings`;
     const MANAGERS_COLLECTION_PATH = `artifacts/${APP_ID}/public/settings/project_managers`;
     const COMMUNITY_COLLECTION_PATH= `artifacts/${APP_ID}/public/community/posts`;
+    const WATCHERS_COLLECTION_PATH = `artifacts/${APP_ID}/public/data/project_watchers`;
 
     const DEFAULT_MANAGERS = ["蔡雅雯","陳乃菁","吳曉琪","蘇琬淳","楊穎潔","王小明","李小華","張曉安"];
     let managers = [];
@@ -235,6 +236,7 @@
     let selectedProjectId = null;
     let calendarInstance = null;
     let miniCalendarInstance = null; // 儀錶板的迷你行事曆
+    let detailsWatchersUnsub = null;
 
     function escapeHtml(str){
       if(str==null) return "";
@@ -269,6 +271,10 @@
         if (v instanceof Date) return v.toISOString().slice(0,10);
         return "";
       }catch{ return ""; }
+    }
+    function isoToLocale(s){
+      if(!s) return "";
+      try{ return new Date(s).toLocaleString(); }catch{ return s; }
     }
     function overlapsRange(start, end, s, e){
       if(!start && !end) return false;
@@ -330,7 +336,7 @@
       }
     }
 
-    // AI 週/月報（Brain）
+    // AI 週/月報（提供給 Brain 視圖使用）
     async function generateAIReport(mode){
       const url = AI_SUMMARY_WEBAPP_URL;
       if(!url || /REPLACE/.test(url)) { showModal("未設定 AI 端點", "請先部署 AI Web App URL 後再使用。"); return; }
@@ -626,7 +632,7 @@
       }
       else if(view==="tasks"){ renderTaskManagement(); }
       else if(view==="calendar"){ renderCalendar(); }
-      else if(view==="report"){ renderReport(); }  // Brain
+      else if(view==="report"){ renderReport(); }  // Brain (AI 摘要)
       else if(view==="community"){ renderCommunity(); }
     };
     function setActiveByView(view){
@@ -645,11 +651,12 @@
       if(currentView==="community") renderCommunity();
     }
 
-    // 儀錶板：AI 摘要已移至 Brain，這裡保留 mini-calendar 與指標卡片
+    // 儀錶板：AI 摘要改移 Brain，這裡保留迷你行事曆與統計
     function renderDashboard(){
       const c = document.getElementById("main-content");
       if(!c) return;
 
+      // 銷毀既有迷你行事曆避免重複
       if (miniCalendarInstance) {
         try { miniCalendarInstance.destroy(); } catch(_) {}
         miniCalendarInstance = null;
@@ -721,6 +728,7 @@
           </div>
         </div>
 
+        <!-- 保留：迷你行事曆（AI 摘要已移至 Brain） -->
         <div class="project-card bg-white p-6 rounded-xl shadow-lg">
           <h3 class="text-xl font-semibold text-gray-800 mb-4 flex items-center">
             <i data-lucide="calendar" class="w-5 h-5 mr-2 text-primary-blue"></i> 行事曆（本月）
@@ -784,6 +792,7 @@
       `;
       if(window.lucide?.createIcons) lucide.createIcons();
 
+      // 初始化儀錶板迷你行事曆
       const calEl = document.getElementById("mini-calendar");
       if (calEl && window.FullCalendar?.Calendar) {
         const evs = (events||[]).map(ev => ({
@@ -937,6 +946,7 @@
 
       document.getElementById("new-project-form")?.addEventListener("submit", handleNewProjectSubmission);
 
+      // 自動合計預算
       const recalc = ()=>{
         const a = n(document.getElementById("proj-personnel").value);
         const b = n(document.getElementById("proj-operating").value);
@@ -949,465 +959,7 @@
       recalc();
     }
 
-    // Planner：完整任務管理（新增/編輯/刪除/篩選）
-    function renderTaskManagement(){
-      const c = document.getElementById("main-content");
-      if(!c) return;
-
-      const projectOptions = projects.length>0
-        ? projects.map(p=>`<option value="${escapeHtml(p.id)}">${escapeHtml(p.id)} - ${escapeHtml(p.title||"")}</option>`).join("")
-        : '<option value="">尚無專案</option>';
-
-      const uniqueAssignees = Array.from(new Set(tasks.map(t=>t.assignee).filter(Boolean)));
-
-      c.innerHTML = `
-        <h2 class="text-3xl font-bold text-gray-800 mb-6 border-b pb-2 flex items-center">
-          <i data-lucide="calendar-days" class="w-7 h-7 mr-3 text-primary-blue"></i> Planner（任務管理）
-        </h2>
-
-        <div class="grid grid-cols-1 lg:grid-cols-4 gap-6">
-          <!-- 新增任務 -->
-          <div class="lg:col-span-1 project-card bg-white p-5 rounded-xl shadow">
-            <h3 class="text-lg font-semibold text-gray-800 mb-3 flex items-center">
-              <i data-lucide="plus" class="w-5 h-5 mr-2 text-primary-blue"></i> 新增任務
-            </h3>
-            <form id="new-task-form" class="space-y-3">
-              <div>
-                <label class="block text-sm text-gray-700">所屬專案</label>
-                <select id="task-project" class="mt-1 w-full rounded-md border-gray-300 p-2 border">${projectOptions}</select>
-              </div>
-              <div>
-                <label class="block text-sm text-gray-700">任務名稱</label>
-                <input id="task-name" type="text" class="mt-1 w-full rounded-md border-gray-300 p-2 border" placeholder="輸入任務名稱" required>
-              </div>
-              <div>
-                <label class="block text-sm text-gray-700">負責人</label>
-                <select id="task-assignee" class="mt-1 w-full rounded-md border-gray-300 p-2 border">
-                  ${ managerOptionsHtml() }
-                </select>
-              </div>
-              <div class="grid grid-cols-2 gap-3">
-                <div>
-                  <label class="block text-sm text-gray-700">到期日</label>
-                  <input id="task-due" type="date" class="mt-1 w-full rounded-md border-gray-300 p-2 border">
-                </div>
-                <div>
-                  <label class="block text-sm text-gray-700">狀態</label>
-                  <select id="task-status" class="mt-1 w-full rounded-md border-gray-300 p-2 border">
-                    <option value="待辦">待辦</option>
-                    <option value="進行中">進行中</option>
-                    <option value="完成">完成</option>
-                    <option value="延期">延期</option>
-                  </select>
-                </div>
-              </div>
-              <button type="submit" class="w-full py-2 bg-primary-blue text-white rounded-lg hover:bg-blue-700">新增</button>
-              <div id="task-form-feedback" class="text-sm mt-2"></div>
-            </form>
-          </div>
-
-          <!-- 篩選與清單 -->
-          <div class="lg:col-span-3 project-card bg-white p-5 rounded-xl shadow">
-            <div class="flex flex-wrap items-end gap-3 mb-4">
-              <div>
-                <label class="block text-xs text-gray-600">專案</label>
-                <select id="filter-project" class="rounded-md border-gray-300 p-2 border min-w-48">
-                  <option value="">全部</option>
-                  ${projectOptions}
-                </select>
-              </div>
-              <div>
-                <label class="block text-xs text-gray-600">狀態</label>
-                <select id="filter-status" class="rounded-md border-gray-300 p-2 border">
-                  <option value="">全部</option>
-                  <option value="待辦">待辦</option>
-                  <option value="進行中">進行中</option>
-                  <option value="完成">完成</option>
-                  <option value="延期">延期</option>
-                </select>
-              </div>
-              <div>
-                <label class="block text-xs text-gray-600">負責人</label>
-                <select id="filter-assignee" class="rounded-md border-gray-300 p-2 border">
-                  <option value="">全部</option>
-                  ${uniqueAssignees.map(a=>`<option value="${escapeHtml(a)}">${escapeHtml(a)}</option>`).join("")}
-                </select>
-              </div>
-              <div class="flex-1">
-                <label class="block text-xs text-gray-600">關鍵字</label>
-                <input id="filter-keyword" type="text" class="w-full rounded-md border-gray-300 p-2 border" placeholder="搜尋任務名稱或描述">
-              </div>
-              <div>
-                <button id="btn-export-tasks" class="px-3 py-2 rounded-md bg-gray-200 hover:bg-gray-300">匯出 CSV</button>
-              </div>
-            </div>
-
-            <div class="overflow-x-auto">
-              <table class="min-w-full divide-y divide-gray-200">
-                <thead class="bg-gray-50">
-                  <tr>
-                    <th class="px-3 py-2 text-left text-xs font-medium text-gray-500">任務名稱</th>
-                    <th class="px-3 py-2 text-left text-xs font-medium text-gray-500">專案</th>
-                    <th class="px-3 py-2 text-left text-xs font-medium text-gray-500">負責人</th>
-                    <th class="px-3 py-2 text-left text-xs font-medium text-gray-500">到期</th>
-                    <th class="px-3 py-2 text-left text-xs font-medium text-gray-500">狀態</th>
-                    <th class="px-3 py-2 text-left text-xs font-medium text-gray-500">操作</th>
-                  </tr>
-                </thead>
-                <tbody id="tasks-tbody" class="bg-white divide-y divide-gray-200"></tbody>
-              </table>
-            </div>
-            <div id="tasks-empty" class="text-center text-gray-500 py-6 hidden">沒有符合條件的任務。</div>
-          </div>
-        </div>
-      `;
-      if(window.lucide?.createIcons) lucide.createIcons();
-
-      function applyTaskFilters(){
-        const fProject = document.getElementById("filter-project").value;
-        const fStatus = document.getElementById("filter-status").value;
-        const fAssignee = document.getElementById("filter-assignee").value;
-        const kw = (document.getElementById("filter-keyword").value || "").toLowerCase().trim();
-
-        const rows = tasks
-          .filter(t => !fProject || t.projectId === fProject)
-          .filter(t => !fStatus || t.status === fStatus)
-          .filter(t => !fAssignee || t.assignee === fAssignee)
-          .filter(t => {
-            if(!kw) return true;
-            const hay = `${t.taskName||""} ${t.description||""}`.toLowerCase();
-            return hay.includes(kw);
-          })
-          .sort((a,b) => String(a.dueDate||"").localeCompare(String(b.dueDate||"")));
-
-        const tbody = document.getElementById("tasks-tbody");
-        const empty = document.getElementById("tasks-empty");
-        if(!tbody) return;
-        tbody.innerHTML = rows.map(t=>{
-          const badge =
-            t.status==="完成" ? "bg-secondary-green/10 text-secondary-green" :
-            t.status==="延期" ? "bg-accent-orange/10 text-accent-orange" :
-            t.status==="進行中" ? "bg-primary-blue/10 text-primary-blue" :
-            "bg-gray-100 text-gray-600";
-          const p = projects.find(p=>p.id===t.projectId);
-          return `
-            <tr data-id="${escapeHtml(t.id)}">
-              <td class="px-3 py-2 text-sm">${escapeHtml(t.taskName||"")}</td>
-              <td class="px-3 py-2 text-sm">${escapeHtml(t.projectId||"")} ${p?`- ${escapeHtml(p.title||"")}`:""}</td>
-              <td class="px-3 py-2 text-sm">${escapeHtml(t.assignee||"")}</td>
-              <td class="px-3 py-2 text-sm">${escapeHtml(t.dueDate||"")}</td>
-              <td class="px-3 py-2 text-sm"><span class="px-2 py-1 rounded-full text-xs ${badge}">${escapeHtml(t.status||"")}</span></td>
-              <td class="px-3 py-2 text-sm space-x-2">
-                <button class="text-primary-blue hover:underline" data-action="edit">編輯</button>
-                <button class="text-red-600 hover:underline" data-action="delete">刪除</button>
-              </td>
-            </tr>
-          `;
-        }).join("");
-        empty.classList.toggle("hidden", rows.length>0);
-      }
-
-      ["filter-project","filter-status","filter-assignee","filter-keyword"].forEach(id=>{
-        document.getElementById(id)?.addEventListener("input", applyTaskFilters);
-        document.getElementById(id)?.addEventListener("change", applyTaskFilters);
-      });
-
-      document.getElementById("btn-export-tasks")?.addEventListener("click", ()=>{
-        const headers = ["id","projectId","taskName","assignee","dueDate","status"];
-        const csv = arrayToCsv(headers, tasks);
-        triggerDownloadCsv(csv, "tasks_export.csv");
-      });
-
-      document.getElementById("new-task-form")?.addEventListener("submit", async (e)=>{
-        e.preventDefault();
-        const feedback = document.getElementById("task-form-feedback");
-        if(!isAuthorized()){
-          feedback.className="text-sm mt-2 text-red-600";
-          feedback.textContent="請先登入再新增任務。";
-          return;
-        }
-        const projectId = document.getElementById("task-project").value;
-        const taskName = document.getElementById("task-name").value.trim();
-        const assignee = document.getElementById("task-assignee").value;
-        const dueDate = document.getElementById("task-due").value;
-        const status = document.getElementById("task-status").value;
-        if(!taskName){
-          feedback.className="text-sm mt-2 text-red-600";
-          feedback.textContent="請輸入任務名稱。";
-          return;
-        }
-        try{
-          await addDoc(collection(db, TASKS_COLLECTION_PATH), {
-            projectId, taskName, assignee, dueDate, status,
-            description: "",
-            createdAt: serverTimestamp(), reporterId: currentUserId
-          });
-          feedback.className="text-sm mt-2 text-secondary-green";
-          feedback.textContent="新增成功。";
-          const form = document.getElementById("new-task-form");
-          if (form && typeof form.reset === "function") form.reset();
-        }catch(err){
-          console.error(err);
-          feedback.className="text-sm mt-2 text-red-600";
-          feedback.textContent="新增失敗：資料庫錯誤。";
-        }
-      });
-
-      document.getElementById("tasks-tbody")?.addEventListener("click", async (e)=>{
-        const target = e.target;
-        if(!target || !target.closest) return;
-        const btn = target.closest("button");
-        if(!btn) return;
-        const tr = btn.closest("tr");
-        const id = tr?.getAttribute("data-id");
-        if(!id) return;
-        const task = tasks.find(t=>t.id===id);
-        if(!task) return;
-
-        if(btn.getAttribute("data-action")==="delete"){
-          if(!confirm("確定刪除這個任務？")) return;
-          try{
-            await deleteDoc(doc(db, TASKS_COLLECTION_PATH, id));
-          }catch(err){
-            console.error(err);
-            showModal("刪除失敗", "無法刪除任務。");
-          }
-        }else if(btn.getAttribute("data-action")==="edit"){
-          const newName = prompt("任務名稱", task.taskName||"");
-          if(newName===null) return;
-          const newAssignee = prompt("負責人", task.assignee||"") ?? task.assignee||"";
-          const newDue = prompt("到期日（YYYY-MM-DD）", task.dueDate||"") ?? task.dueDate||"";
-          const newStatus = prompt("狀態（待辦/進行中/完成/延期）", task.status||"待辦") ?? task.status||"待辦";
-          try{
-            await updateDoc(doc(db, TASKS_COLLECTION_PATH, id), {
-              taskName: newName.trim(),
-              assignee: newAssignee.trim(),
-              dueDate: newDue.trim(),
-              status: newStatus.trim()
-            });
-          }catch(err){
-            console.error(err);
-            showModal("更新失敗", "無法更新任務。");
-          }
-        }
-      });
-
-      applyTaskFilters();
-      if(window.lucide?.createIcons) lucide.createIcons();
-    }
-
-    // 專案詳情：專案資訊 + 該專案任務 + 檔案上傳/清單
-    function renderProjectDetails(projectId){
-      const c = document.getElementById("main-content");
-      if(!c) return;
-      const p = projects.find(x=>x.id===projectId);
-      const projTasks = tasks.filter(t=>t.projectId===projectId).sort((a,b)=>String(a.dueDate||"").localeCompare(String(b.dueDate||"")));
-      const projFiles = files.filter(f=>f.projectId===projectId);
-
-      c.innerHTML = `
-        <h2 class="text-3xl font-bold text-gray-800 mb-6 border-b pb-2 flex items-center">
-          <i data-lucide="layout-dashboard" class="w-7 h-7 mr-3 text-primary-blue"></i> 專案詳情
-        </h2>
-
-        ${ p ? `
-          <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            <div class="project-card bg-white p-6 rounded-xl shadow lg:col-span-1">
-              <div class="text-lg font-semibold text-primary-blue mb-1">${escapeHtml(p.title||"")}</div>
-              <div class="text-sm text-gray-500 mb-3">編號：${escapeHtml(p.id||"")}</div>
-              <div class="grid grid-cols-2 gap-y-2 text-sm">
-                <div class="text-gray-500">主持人</div><div>${escapeHtml(p.manager||"")}</div>
-                <div class="text-gray-500">進度</div><div>${n(p.progress)}%</div>
-                <div class="text-gray-500">狀態</div><div>${escapeHtml(p.status||"")}</div>
-                <div class="text-gray-500">預算概算</div><div>${fmtMoney(n(p.budget))}</div>
-              </div>
-            </div>
-
-            <div class="project-card bg-white p-6 rounded-xl shadow lg:col-span-2">
-              <h3 class="text-lg font-semibold text-gray-800 mb-3 flex items-center"><i data-lucide="list-checks" class="w-5 h-5 mr-2 text-primary-blue"></i> 任務</h3>
-              <form id="proj-new-task" class="grid grid-cols-1 md:grid-cols-4 gap-3 mb-4">
-                <input type="hidden" id="proj-task-project" value="${escapeHtml(p.id)}">
-                <input id="proj-task-name" type="text" class="rounded-md border-gray-300 p-2 border" placeholder="任務名稱" required>
-                <select id="proj-task-assignee" class="rounded-md border-gray-300 p-2 border">${managerOptionsHtml()}</select>
-                <input id="proj-task-due" type="date" class="rounded-md border-gray-300 p-2 border">
-                <select id="proj-task-status" class="rounded-md border-gray-300 p-2 border">
-                  <option value="待辦">待辦</option><option value="進行中">進行中</option><option value="完成">完成</option><option value="延期">延期</option>
-                </select>
-                <button type="submit" class="md:col-span-4 px-3 py-2 bg-primary-blue text-white rounded-md hover:bg-blue-700">新增任務</button>
-                <div id="proj-task-feedback" class="text-sm md:col-span-4"></div>
-              </form>
-              <div class="overflow-x-auto">
-                <table class="min-w-full divide-y divide-gray-200">
-                  <thead class="bg-gray-50">
-                    <tr>
-                      <th class="px-3 py-2 text-left text-xs font-medium text-gray-500">任務名稱</th>
-                      <th class="px-3 py-2 text-left text-xs font-medium text-gray-500">負責人</th>
-                      <th class="px-3 py-2 text-left text-xs font-medium text-gray-500">到期日</th>
-                      <th class="px-3 py-2 text-left text-xs font-medium text-gray-500">狀態</th>
-                      <th class="px-3 py-2 text-left text-xs font-medium text-gray-500">操作</th>
-                    </tr>
-                  </thead>
-                  <tbody id="proj-tasks-tbody" class="bg-white divide-y divide-gray-200"></tbody>
-                </table>
-                <div class="text-center text-gray-500 py-4 ${projTasks.length>0?'hidden':''}">此專案尚無任務。</div>
-              </div>
-            </div>
-
-            <div class="project-card bg-white p-6 rounded-xl shadow lg:col-span-3">
-              <h3 class="text-lg font-semibold text-gray-800 mb-3 flex items-center"><i data-lucide="paperclip" class="w-5 h-5 mr-2 text-primary-blue"></i> 檔案</h3>
-              <form id="proj-file-form" class="flex flex-wrap items-center gap-3 mb-4">
-                <input type="file" id="proj-file-input" class="rounded-md border-gray-300 p-2 border bg-white">
-                <button type="submit" class="px-3 py-2 bg-primary-blue text-white rounded-md hover:bg-blue-700">上傳檔案</button>
-                <div id="proj-file-feedback" class="text-sm"></div>
-              </form>
-              <div id="proj-files-list" class="grid grid-cols-1 md:grid-cols-3 gap-3">
-                ${projFiles.map(f=>`
-                  <div class="border rounded-md p-3 bg-white flex items-center justify-between">
-                    <div class="min-w-0">
-                      <div class="text-sm font-medium truncate">${escapeHtml(f.fileName||"")}</div>
-                      <div class="text-xs text-gray-500 truncate">${escapeHtml(f.url||"")}</div>
-                    </div>
-                    <div class="flex items-center gap-2">
-                      <a href="${escapeHtml(f.url||"#")}" target="_blank" class="text-primary-blue hover:underline text-sm">下載</a>
-                      <button class="text-red-600 hover:underline text-sm" data-action="del-file" data-id="${escapeHtml(f.id)}">刪除</button>
-                    </div>
-                  </div>
-                `).join("")}
-              </div>
-              <div class="text-center text-gray-500 py-4 ${projFiles.length>0?'hidden':''}">尚無檔案。</div>
-            </div>
-          </div>
-        ` : `<p class="text-gray-500">找不到該專案。</p>`}
-      `;
-      if(window.lucide?.createIcons) lucide.createIcons();
-
-      // 渲染任務清單
-      const tbody = document.getElementById("proj-tasks-tbody");
-      if (tbody){
-        tbody.innerHTML = projTasks.map(t=>{
-          const badge =
-            t.status==="完成" ? "bg-secondary-green/10 text-secondary-green" :
-            t.status==="延期" ? "bg-accent-orange/10 text-accent-orange" :
-            t.status==="進行中" ? "bg-primary-blue/10 text-primary-blue" :
-            "bg-gray-100 text-gray-600";
-          return `
-            <tr data-id="${escapeHtml(t.id)}">
-              <td class="px-3 py-2 text-sm">${escapeHtml(t.taskName||"")}</td>
-              <td class="px-3 py-2 text-sm">${escapeHtml(t.assignee||"")}</td>
-              <td class="px-3 py-2 text-sm">${escapeHtml(t.dueDate||"")}</td>
-              <td class="px-3 py-2 text-sm"><span class="px-2 py-1 rounded-full text-xs ${badge}">${escapeHtml(t.status||"")}</span></td>
-              <td class="px-3 py-2 text-sm space-x-2">
-                <button class="text-primary-blue hover:underline" data-action="edit">編輯</button>
-                <button class="text-red-600 hover:underline" data-action="delete">刪除</button>
-              </td>
-            </tr>
-          `;
-        }).join("");
-        tbody.addEventListener("click", async (e)=>{
-          const btn = e.target.closest("button");
-          if(!btn) return;
-          const tr = btn.closest("tr");
-          const id = tr?.getAttribute("data-id");
-          if(!id) return;
-          const task = tasks.find(x=>x.id===id);
-          if(!task) return;
-
-          if(btn.getAttribute("data-action")==="delete"){
-            if(!confirm("確定刪除這個任務？")) return;
-            try{ await deleteDoc(doc(db, TASKS_COLLECTION_PATH, id)); }catch(err){ console.error(err); showModal("刪除失敗","無法刪除任務"); }
-          }else if(btn.getAttribute("data-action")==="edit"){
-            const newName = prompt("任務名稱", task.taskName||"");
-            if(newName===null) return;
-            const newAssignee = prompt("負責人", task.assignee||"") ?? task.assignee||"";
-            const newDue = prompt("到期日（YYYY-MM-DD）", task.dueDate||"") ?? task.dueDate||"";
-            const newStatus = prompt("狀態（待辦/進行中/完成/延期）", task.status||"待辦") ?? task.status||"待辦";
-            try{
-              await updateDoc(doc(db, TASKS_COLLECTION_PATH, id), {
-                taskName: newName.trim(), assignee: newAssignee.trim(), dueDate: newDue.trim(), status: newStatus.trim()
-              });
-            }catch(err){ console.error(err); showModal("更新失敗","無法更新任務"); }
-          }
-        });
-      }
-
-      // 新增任務（此專案）
-      document.getElementById("proj-new-task")?.addEventListener("submit", async (e)=>{
-        e.preventDefault();
-        const feedback = document.getElementById("proj-task-feedback");
-        if(!isAuthorized()){
-          feedback.className="text-sm text-red-600"; feedback.textContent="請先登入再新增任務。"; return;
-        }
-        const projectId = p?.id || "";
-        const taskName = document.getElementById("proj-task-name").value.trim();
-        const assignee = document.getElementById("proj-task-assignee").value;
-        const dueDate = document.getElementById("proj-task-due").value;
-        const status = document.getElementById("proj-task-status").value;
-        if(!taskName){ feedback.className="text-sm text-red-600"; feedback.textContent="請輸入任務名稱。"; return; }
-        try{
-          await addDoc(collection(db, TASKS_COLLECTION_PATH), {
-            projectId, taskName, assignee, dueDate, status, createdAt: serverTimestamp(), reporterId: currentUserId
-          });
-          feedback.className="text-sm text-secondary-green"; feedback.textContent="新增成功。";
-          const form = document.getElementById("proj-new-task");
-          if (form && typeof form.reset === "function") form.reset();
-        }catch(err){
-          console.error(err);
-          feedback.className="text-sm text-red-600"; feedback.textContent="新增失敗：資料庫錯誤。";
-        }
-      });
-
-      // 檔案上傳
-      document.getElementById("proj-file-form")?.addEventListener("submit", async (e)=>{
-        e.preventDefault();
-        const input = document.getElementById("proj-file-input");
-        const feedback = document.getElementById("proj-file-feedback");
-        if(!isAuthorized()){ feedback.className="text-sm text-red-600"; feedback.textContent = "請先登入再上傳檔案。"; return; }
-        const file = input?.files?.[0];
-        if(!file){ feedback.className="text-sm text-red-600"; feedback.textContent="請選擇檔案。"; return; }
-        try{
-          const key = `artifacts/${APP_ID}/public/uploads/project_files/${p?.id}/${Date.now()}_${file.name}`;
-          const ref = sRef(storage, key);
-          const task = uploadBytesResumable(ref, file);
-          feedback.className="text-sm text-gray-700"; feedback.textContent="上傳中...";
-          await new Promise((resolve, reject)=>{
-            task.on("state_changed", null, reject, resolve);
-          });
-          const url = await getDownloadURL(ref);
-          await addDoc(collection(db, FILES_COLLECTION_PATH), {
-            projectId: p?.id || "", fileName: file.name, path: key, url,
-            uploadedAt: serverTimestamp(), uploadedBy: currentUserId
-          });
-          feedback.className="text-sm text-secondary-green"; feedback.textContent="上傳完成。";
-          input.value = "";
-        }catch(err){
-          console.error(err);
-          feedback.className="text-sm text-red-600"; feedback.textContent="上傳失敗。";
-        }
-      });
-
-      // 檔案刪除
-      document.getElementById("proj-files-list")?.addEventListener("click", async (e)=>{
-        const btn = e.target.closest("button[data-action='del-file']");
-        if(!btn) return;
-        const id = btn.getAttribute("data-id");
-        const fileDoc = files.find(f=>f.id===id);
-        if(!fileDoc) return;
-        if(!confirm("確定刪除此檔案？")) return;
-        try{
-          if(fileDoc.path){
-            const ref = sRef(storage, fileDoc.path);
-            await deleteObject(ref).catch(()=>{});
-          }
-          await deleteDoc(doc(db, FILES_COLLECTION_PATH, id));
-        }catch(err){
-          console.error(err);
-          showModal("刪除失敗","無法刪除檔案。");
-        }
-      });
-
-      if(window.lucide?.createIcons) lucide.createIcons();
-    }
-
-    // Brain：AI 摘要功能（已移至此）
+    // Brain：AI 摘要功能
     function renderReport(){
       const c = document.getElementById("main-content");
       if(!c) return;
@@ -1432,11 +984,12 @@
       if(window.lucide?.createIcons) lucide.createIcons();
     }
 
-    // 行事曆：完整（含新增事項）
+    // 行事曆：完整功能（含新增事項）
     function renderCalendar(){
       const c = document.getElementById("main-content");
       if(!c) return;
 
+      // 銷毀舊實例
       if (calendarInstance) {
         try { calendarInstance.destroy(); } catch(_) {}
         calendarInstance = null;
@@ -1452,6 +1005,7 @@
         </h2>
 
         <div class="grid grid-cols-1 lg:grid-cols-4 gap-6">
+          <!-- 新增事項表單 -->
           <div class="lg:col-span-1 project-card bg-white p-5 rounded-xl shadow">
             <h3 class="text-lg font-semibold text-gray-800 mb-3 flex items-center">
               <i data-lucide="plus" class="w-5 h-5 mr-2 text-primary-blue"></i> 新增事項
@@ -1487,6 +1041,7 @@
             <p class="text-xs text-gray-500 mt-3">提示：點選右側行事曆日期可自動帶入開始/結束日。</p>
           </div>
 
+          <!-- 完整行事曆 -->
           <div class="lg:col-span-3 project-card bg-white p-5 rounded-xl shadow">
             <div id="full-calendar"></div>
           </div>
@@ -1494,6 +1049,7 @@
       `;
       if(window.lucide?.createIcons) lucide.createIcons();
 
+      // 初始化 FullCalendar
       const calEl = document.getElementById("full-calendar");
       if (calEl && window.FullCalendar?.Calendar) {
         const evs = (events||[]).map(ev => ({
@@ -1520,6 +1076,7 @@
         calendarInstance.render();
       }
 
+      // 綁定新增事件表單
       document.getElementById("new-event-form")?.addEventListener("submit", async (e)=>{
         e.preventDefault();
         const feedback = document.getElementById("event-form-feedback");
@@ -1549,6 +1106,7 @@
           feedback.textContent=`新增成功 (ID: ${ref.id})。`;
           const form = document.getElementById("new-event-form");
           if (form && typeof form.reset === "function") form.reset();
+          // 重新渲染由 onSnapshot 驅動
         }catch(err){
           console.error(err);
           feedback.className="text-sm mt-2 text-red-600";
@@ -1557,7 +1115,435 @@
       });
     }
 
+    // Planner（任務管理）：新增/編輯/刪除/篩選
+    function renderTaskManagement(){
+      const c = document.getElementById("main-content");
+      if(!c) return;
+
+      const projectOptions = projects.length>0
+        ? `<option value="">全部專案</option>` + projects.map(p=>`<option value="${escapeHtml(p.id)}">${escapeHtml(p.id)} - ${escapeHtml(p.title||"")}</option>`).join("")
+        : '<option value="">全部專案</option>';
+
+      // 取得動態狀態清單
+      const statusSet = new Set(tasks.map(t => (t.status||"").trim()).filter(Boolean));
+      const statusOptions = ['全部狀態', ...Array.from(statusSet).filter(Boolean)];
+      const managerSet = new Set(tasks.map(t => (t.assignee||"").trim()).filter(Boolean));
+      const assigneeOptions = ['全部負責人', ...Array.from(managerSet).filter(Boolean)];
+
+      c.innerHTML = `
+        <h2 class="text-3xl font-bold text-gray-800 mb-6 border-b pb-2 flex items-center">
+          <i data-lucide="calendar-days" class="w-7 h-7 mr-3 text-primary-blue"></i> Planner（任務管理）
+        </h2>
+
+        <!-- 新增任務 -->
+        <div class="project-card bg-white p-6 rounded-xl shadow mb-8">
+          <h3 class="text-lg font-semibold text-gray-800 mb-4 flex items-center">
+            <i data-lucide="plus" class="w-5 h-5 mr-2 text-primary-blue"></i> 新增任務
+          </h3>
+          <form id="new-task-form" class="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div class="md:col-span-1">
+              <label class="block text-sm text-gray-700">專案</label>
+              <select id="task-project" class="mt-1 w-full rounded-md border-gray-300 p-2 border">${projectOptions}</select>
+            </div>
+            <div class="md:col-span-1">
+              <label class="block text-sm text-gray-700">任務名稱</label>
+              <input id="task-name" type="text" class="mt-1 w-full rounded-md border-gray-300 p-2 border" required>
+            </div>
+            <div class="md:col-span-1">
+              <label class="block text-sm text-gray-700">負責人</label>
+              <select id="task-assignee" class="mt-1 w-full rounded-md border-gray-300 p-2 border">${managerOptionsHtml()}</select>
+            </div>
+            <div class="md:col-span-1">
+              <label class="block text-sm text-gray-700">到期日</label>
+              <input id="task-due" type="date" class="mt-1 w-full rounded-md border-gray-300 p-2 border">
+            </div>
+            <div class="md:col-span-1">
+              <label class="block text-sm text-gray-700">狀態</label>
+              <input id="task-status" type="text" class="mt-1 w-full rounded-md border-gray-300 p-2 border" placeholder="例如：未開始/進行中/完成">
+            </div>
+            <div class="md:col-span-3">
+              <label class="block text-sm text-gray-700">描述</label>
+              <textarea id="task-desc" rows="2" class="mt-1 w-full rounded-md border-gray-300 p-2 border" placeholder="任務描述（選填）"></textarea>
+            </div>
+            <div class="md:col-span-3 flex justify-end">
+              <button type="submit" class="px-4 py-2 bg-primary-blue text-white rounded-lg hover:bg-blue-700">新增</button>
+            </div>
+            <div id="task-form-feedback" class="text-sm md:col-span-3"></div>
+          </form>
+        </div>
+
+        <!-- 篩選 -->
+        <div class="project-card bg-white p-4 rounded-xl shadow mb-4">
+          <div class="grid grid-cols-1 md:grid-cols-5 gap-3">
+            <div>
+              <label class="block text-xs text-gray-600">專案</label>
+              <select id="flt-project" class="mt-1 w-full rounded-md border-gray-300 p-2 border">${projectOptions}</select>
+            </div>
+            <div>
+              <label class="block text-xs text-gray-600">負責人</label>
+              <select id="flt-assignee" class="mt-1 w-full rounded-md border-gray-300 p-2 border">
+                ${ assigneeOptions.map(a => `<option value="${escapeHtml(a==='全部負責人'?'':a)}">${escapeHtml(a)}</option>`).join("") }
+              </select>
+            </div>
+            <div>
+              <label class="block text-xs text-gray-600">狀態</label>
+              <select id="flt-status" class="mt-1 w-full rounded-md border-gray-300 p-2 border">
+                ${ statusOptions.map(s => `<option value="${escapeHtml(s==='全部狀態'?'':s)}">${escapeHtml(s)}</option>`).join("") }
+              </select>
+            </div>
+            <div>
+              <label class="block text-xs text-gray-600">從</label>
+              <input id="flt-from" type="date" class="mt-1 w-full rounded-md border-gray-300 p-2 border">
+            </div>
+            <div>
+              <label class="block text-xs text-gray-600">到</label>
+              <input id="flt-to" type="date" class="mt-1 w-full rounded-md border-gray-300 p-2 border">
+            </div>
+          </div>
+          <div class="mt-3 flex items-center gap-2">
+            <input id="flt-search" type="text" class="flex-1 rounded-md border-gray-300 p-2 border" placeholder="搜尋任務名稱/描述">
+            <button id="flt-reset" class="px-3 py-2 text-sm rounded-lg bg-gray-200 hover:bg-gray-300">重置</button>
+          </div>
+        </div>
+
+        <!-- 任務清單 -->
+        <div class="project-card bg-white p-0 rounded-xl shadow overflow-hidden">
+          <table class="min-w-full">
+            <thead class="bg-gray-50">
+              <tr>
+                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">專案</th>
+                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">任務</th>
+                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">負責人</th>
+                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">到期</th>
+                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">狀態</th>
+                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">操作</th>
+              </tr>
+            </thead>
+            <tbody id="task-tbody" class="divide-y divide-gray-200 bg-white"></tbody>
+          </table>
+        </div>
+      `;
+      if(window.lucide?.createIcons) lucide.createIcons();
+
+      // 新增任務
+      document.getElementById("new-task-form")?.addEventListener("submit", async (e)=>{
+        e.preventDefault();
+        const feedback = document.getElementById("task-form-feedback");
+        if(!isAuthorized()){ feedback.className="text-sm text-red-600"; feedback.textContent="請先登入再新增任務。"; return; }
+        const projectId = document.getElementById("task-project").value || "";
+        const taskName = document.getElementById("task-name").value.trim();
+        const assignee = document.getElementById("task-assignee").value || "";
+        const dueDate = document.getElementById("task-due").value || "";
+        const status = document.getElementById("task-status").value.trim() || "未開始";
+        const description = document.getElementById("task-desc").value || "";
+        if(!taskName){ feedback.className="text-sm text-red-600"; feedback.textContent="請輸入任務名稱。"; return; }
+        try{
+          const ref = await addDoc(collection(db, TASKS_COLLECTION_PATH), {
+            projectId, taskName, description, assignee, dueDate, status,
+            createdAt: serverTimestamp(), reporterId: currentUserId
+          });
+          feedback.className="text-sm text-secondary-green"; feedback.textContent=`新增成功 (ID: ${ref.id})。`;
+          (document.getElementById("new-task-form")).reset();
+          renderRows(); // 立即刷新
+        }catch(err){
+          console.error(err);
+          feedback.className="text-sm text-red-600"; feedback.textContent="新增失敗：資料庫錯誤。";
+        }
+      });
+
+      // 篩選與渲染
+      function getFilters(){
+        return {
+          project: document.getElementById("flt-project").value || "",
+          assignee: document.getElementById("flt-assignee").value || "",
+          status: document.getElementById("flt-status").value || "",
+          from: document.getElementById("flt-from").value || "",
+          to: document.getElementById("flt-to").value || "",
+          q: (document.getElementById("flt-search").value||"").toLowerCase()
+        };
+      }
+      function applyFilters(list){
+        const f = getFilters();
+        return list.filter(t=>{
+          if(f.project && t.projectId !== f.project) return false;
+          if(f.assignee && (t.assignee||"") !== f.assignee) return false;
+          if(f.status && (t.status||"") !== f.status) return false;
+          if(f.from && (t.dueDate||"") < f.from) return false;
+          if(f.to && (t.dueDate||"") > f.to) return false;
+          if(f.q){
+            const hay = `${t.taskName||""} ${t.description||""}`.toLowerCase();
+            if(!hay.includes(f.q)) return false;
+          }
+          return true;
+        });
+      }
+
+      let editingId = null;
+
+      function renderRows(){
+        const tbody = document.getElementById("task-tbody");
+        if(!tbody) return;
+        const sorted = [...tasks].sort((a,b)=> (a.dueDate||"") < (b.dueDate||"") ? -1 : 1);
+        const list = applyFilters(sorted);
+        tbody.innerHTML = list.map(t=>{
+          if(editingId === t.id){
+            return `
+              <tr class="bg-blue-50">
+                <td class="px-4 py-3 text-sm">
+                  <select id="ed-project-${t.id}" class="w-full rounded-md border-gray-300 p-1 border">
+                    ${ projects.map(p=>`<option value="${escapeHtml(p.id)}" ${p.id===t.projectId?'selected':''}>${escapeHtml(p.id)} - ${escapeHtml(p.title||"")}</option>`).join("") }
+                  </select>
+                </td>
+                <td class="px-4 py-3 text-sm">
+                  <input id="ed-name-${t.id}" type="text" class="w-full rounded-md border-gray-300 p-1 border" value="${escapeHtml(t.taskName||'')}">
+                  <textarea id="ed-desc-${t.id}" rows="1" class="w-full rounded-md border-gray-300 p-1 border mt-1" placeholder="描述（選填）">${escapeHtml(t.description||'')}</textarea>
+                </td>
+                <td class="px-4 py-3 text-sm">
+                  <select id="ed-assignee-${t.id}" class="w-full rounded-md border-gray-300 p-1 border">${managerOptionsHtml(t.assignee||"")}</select>
+                </td>
+                <td class="px-4 py-3 text-sm">
+                  <input id="ed-due-${t.id}" type="date" class="w-full rounded-md border-gray-300 p-1 border" value="${escapeHtml(t.dueDate||'')}">
+                </td>
+                <td class="px-4 py-3 text-sm">
+                  <input id="ed-status-${t.id}" type="text" class="w-full rounded-md border-gray-300 p-1 border" value="${escapeHtml(t.status||'')}">
+                </td>
+                <td class="px-4 py-3 text-sm">
+                  <button class="text-secondary-green mr-2" onclick="window.__saveTask('${t.id}')">儲存</button>
+                  <button class="text-gray-600" onclick="window.__cancelEditTask()">取消</button>
+                </td>
+              </tr>
+            `;
+          }else{
+            return `
+              <tr>
+                <td class="px-4 py-3 text-sm">${escapeHtml(t.projectId||"")}</td>
+                <td class="px-4 py-3 text-sm">
+                  <div class="font-medium">${escapeHtml(t.taskName||"")}</div>
+                  ${t.description ? `<div class="text-xs text-gray-500">${escapeHtml(t.description)}</div>` : ""}
+                </td>
+                <td class="px-4 py-3 text-sm">${escapeHtml(t.assignee||"")}</td>
+                <td class="px-4 py-3 text-sm">${escapeHtml(t.dueDate||"")}</td>
+                <td class="px-4 py-3 text-sm">${escapeHtml(t.status||"")}</td>
+                <td class="px-4 py-3 text-sm">
+                  <button class="text-primary-blue mr-3" onclick="window.__editTask('${t.id}')">編輯</button>
+                  <button class="text-red-600" onclick="window.__deleteTask('${t.id}')">刪除</button>
+                </td>
+              </tr>
+            `;
+          }
+        }).join("") || `<tr><td class="px-4 py-6 text-center text-gray-500 text-sm" colspan="6">沒有符合條件的任務</td></tr>`;
+      }
+
+      // 公開操作以便 onclick 使用
+      window.__editTask = function(id){ editingId = id; renderRows(); };
+      window.__cancelEditTask = function(){ editingId = null; renderRows(); };
+      window.__saveTask = async function(id){
+        const projectId = document.getElementById(`ed-project-${id}`).value;
+        const taskName = document.getElementById(`ed-name-${id}`).value.trim();
+        const description = document.getElementById(`ed-desc-${id}`).value;
+        const assignee = document.getElementById(`ed-assignee-${id}`).value;
+        const dueDate = document.getElementById(`ed-due-${id}`).value;
+        const status = document.getElementById(`ed-status-${id}`).value.trim();
+        try{
+          await updateDoc(doc(db, TASKS_COLLECTION_PATH, id), { projectId, taskName, description, assignee, dueDate, status });
+          editingId = null; renderRows();
+        }catch(err){
+          console.error(err); showModal("更新失敗","任務更新時發生錯誤。");
+        }
+      };
+      window.__deleteTask = async function(id){
+        if(!confirm("確定刪除此任務？")) return;
+        try{
+          await deleteDoc(doc(db, TASKS_COLLECTION_PATH, id));
+          renderRows();
+        }catch(err){
+          console.error(err); showModal("刪除失敗","任務刪除時發生錯誤。");
+        }
+      };
+
+      // 綁定篩選
+      ["flt-project","flt-assignee","flt-status","flt-from","flt-to","flt-search"].forEach(id=>{
+        document.getElementById(id)?.addEventListener("input", renderRows);
+        document.getElementById(id)?.addEventListener("change", renderRows);
+      });
+      document.getElementById("flt-reset")?.addEventListener("click", ()=>{
+        ["flt-project","flt-assignee","flt-status","flt-from","flt-to","flt-search"].forEach(id=>{
+          const el = document.getElementById(id); if(el) el.value = "";
+        });
+        renderRows();
+      });
+
+      renderRows();
+    }
+
+    // 專案詳情：管理人追蹤 + 專案相關清單
+    async function toggleFollowProject(projectId){
+      if(!isAuthorized()){ showModal("未登入","請先登入再追蹤專案。"); return; }
+      const id = `${projectId}__${currentUserId}`;
+      const ref = doc(db, WATCHERS_COLLECTION_PATH, id);
+      // 簡單做：嘗試取得現有，再決定刪或寫；為避免讀取，使用 set 再刪也可，但這裡直接嘗試刪除，若失敗則寫入
+      try{
+        // 嘗試刪除（若存在）
+        await deleteDoc(ref);
+        showModal("已取消追蹤", "已取消追蹤此專案。");
+      }catch(_){
+        // 不存在則建立
+        try{
+          await setDoc(ref, { projectId, userId: currentUserId, createdAt: serverTimestamp() });
+          showModal("追蹤成功", "您已追蹤此專案。");
+        }catch(e){
+          console.error(e); showModal("操作失敗","更新追蹤狀態時發生錯誤。");
+        }
+      }
+    }
+
+    function renderProjectDetails(projectId){
+      const c = document.getElementById("main-content");
+      if(!c) return;
+      const p = projects.find(x=>x.id===projectId);
+      if(!p){
+        c.innerHTML = `<p class="text-gray-500">找不到該專案。</p>`;
+        return;
+      }
+
+      // 相關資料
+      const projectTasks = tasks.filter(t => t.projectId===projectId).slice(0,20);
+      const projectEvents = events.filter(e => e.projectId===projectId).slice(0,20);
+      const projectFiles = files.filter(f => f.projectId===projectId).slice(0,20);
+
+      // 監聽追蹤者
+      let watchersCount = 0;
+      let userFollowing = false;
+      if(detailsWatchersUnsub){ try{ detailsWatchersUnsub(); }catch{} detailsWatchersUnsub = null; }
+      detailsWatchersUnsub = onSnapshot(
+        query(collection(db, WATCHERS_COLLECTION_PATH), where("projectId","==", projectId)),
+        (snap)=>{
+          watchersCount = snap.size;
+          userFollowing = snap.docs.some(d => (d.data().userId||"") === currentUserId);
+          const indicator = document.getElementById("follow-indicator");
+          const btn = document.getElementById("btn-follow-project");
+          if(indicator) indicator.textContent = `追蹤者：${watchersCount} 人${userFollowing?"（你已追蹤）":""}`;
+          if(btn) btn.textContent = userFollowing ? "取消追蹤" : "追蹤此專案";
+        }
+      );
+
+      c.innerHTML = `
+        <h2 class="text-3xl font-bold text-gray-800 mb-6 border-b pb-2 flex items-center">
+          <i data-lucide="layout-dashboard" class="w-7 h-7 mr-3 text-primary-blue"></i> 專案詳情
+        </h2>
+
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div class="lg:col-span-2 project-card bg-white p-6 rounded-xl shadow">
+            <div class="flex items-start justify-between">
+              <div>
+                <div class="text-lg font-semibold text-primary-blue">${escapeHtml(p.title||"")}</div>
+                <div class="text-sm text-gray-500 mt-1">編號：${escapeHtml(p.id||"")}</div>
+              </div>
+              <div class="text-right">
+                <div id="follow-indicator" class="text-sm text-gray-600">追蹤者：-- 人</div>
+                <button id="btn-follow-project" class="mt-2 px-3 py-1.5 text-sm rounded-md bg-primary-blue text-white hover:bg-blue-700" onclick="toggleFollowProject('${escapeHtml(projectId)}')">追蹤此專案</button>
+              </div>
+            </div>
+
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4 text-sm">
+              <div><div class="text-gray-500">主持人</div><div class="font-medium">${escapeHtml(p.manager||"")}</div></div>
+              <div><div class="text-gray-500">進度</div><div class="font-medium">${n(p.progress)}%</div></div>
+              <div><div class="text-gray-500">狀態</div><div class="font-medium">${escapeHtml(p.status||"")}</div></div>
+              <div><div class="text-gray-500">預算概算</div><div class="font-medium">${fmtMoney(n(p.budget))}</div></div>
+            </div>
+
+            <div class="mt-6">
+              <div class="text-sm text-gray-500 mb-2">近期任務（最多 20 筆）</div>
+              <div class="border rounded-lg overflow-hidden">
+                <table class="min-w-full">
+                  <thead class="bg-gray-50">
+                    <tr>
+                      <th class="px-3 py-2 text-left text-xs text-gray-500 uppercase">任務</th>
+                      <th class="px-3 py-2 text-left text-xs text-gray-500 uppercase">負責人</th>
+                      <th class="px-3 py-2 text-left text-xs text-gray-500 uppercase">到期</th>
+                      <th class="px-3 py-2 text-left text-xs text-gray-500 uppercase">狀態</th>
+                    </tr>
+                  </thead>
+                  <tbody class="divide-y divide-gray-200 bg-white">
+                    ${
+                      projectTasks.length ? projectTasks.map(t=>`
+                        <tr>
+                          <td class="px-3 py-2 text-sm">
+                            <div class="font-medium">${escapeHtml(t.taskName||"")}</div>
+                            ${t.description? `<div class="text-xs text-gray-500">${escapeHtml(t.description)}</div>`:""}
+                          </td>
+                          <td class="px-3 py-2 text-sm">${escapeHtml(t.assignee||"")}</td>
+                          <td class="px-3 py-2 text-sm">${escapeHtml(t.dueDate||"")}</td>
+                          <td class="px-3 py-2 text-sm">${escapeHtml(t.status||"")}</td>
+                        </tr>
+                      `).join("") : `<tr><td class="px-3 py-4 text-center text-gray-500 text-sm" colspan="4">此專案尚無任務</td></tr>`
+                    }
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <div class="mt-6">
+              <div class="text-sm text-gray-500 mb-2">近期行事（最多 20 筆）</div>
+              <div class="border rounded-lg overflow-hidden">
+                <table class="min-w-full">
+                  <thead class="bg-gray-50">
+                    <tr>
+                      <th class="px-3 py-2 text-left text-xs text-gray-500 uppercase">標題</th>
+                      <th class="px-3 py-2 text-left text-xs text-gray-500 uppercase">日期</th>
+                      <th class="px-3 py-2 text-left text-xs text-gray-500 uppercase">負責人</th>
+                    </tr>
+                  </thead>
+                  <tbody class="divide-y divide-gray-200 bg-white">
+                    ${
+                      projectEvents.length ? projectEvents.map(ev=>`
+                        <tr>
+                          <td class="px-3 py-2 text-sm">${escapeHtml(ev.title||"事件")}</td>
+                          <td class="px-3 py-2 text-sm">${escapeHtml(ev.startDate||"")} ${ev.endDate && ev.endDate!==ev.startDate ? `~ ${escapeHtml(ev.endDate)}`:""}</td>
+                          <td class="px-3 py-2 text-sm">${escapeHtml(ev.assignee||"")}</td>
+                        </tr>
+                      `).join("") : `<tr><td class="px-3 py-4 text-center text-gray-500 text-sm" colspan="3">此專案尚無行事</td></tr>`
+                    }
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+          <!-- 近期檔案 -->
+          <div class="lg:col-span-1 project-card bg-white p-6 rounded-xl shadow">
+            <h3 class="text-lg font-semibold text-gray-800 mb-3 flex items-center">
+              <i data-lucide="paperclip" class="w-5 h-5 mr-2 text-primary-blue"></i> 近期檔案
+            </h3>
+            <div class="space-y-2">
+              ${
+                projectFiles.length ? projectFiles.map(f=>`
+                  <div class="border rounded-md p-2">
+                    <div class="text-sm font-medium truncate">${escapeHtml(f.fileName||"檔案")}</div>
+                    <div class="text-xs text-gray-500">${isoToLocale(f.uploadedAt?.toDate ? f.uploadedAt.toDate().toISOString() : f.uploadedAt || "")}</div>
+                    ${f.url ? `<a class="text-xs text-primary-blue hover:underline" href="${escapeHtml(f.url)}" target="_blank" rel="noopener">下載/查看</a>` : ""}
+                  </div>
+                `).join("") : `<div class="text-sm text-gray-500">尚無檔案</div>`
+              }
+            </div>
+          </div>
+        </div>
+      `;
+      if(window.lucide?.createIcons) lucide.createIcons();
+    }
+
     // 資訊交流：分享圖片、文章、文字、連結
+    async function uploadImageAndGetUrl(file){
+      if(!file) return "";
+      const path = `community_uploads/${currentUserId || 'anonymous'}/${Date.now()}_${file.name}`;
+      const ref = sRef(storage, path);
+      await new Promise((resolve, reject)=>{
+        const task = uploadBytesResumable(ref, file);
+        task.on('state_changed', ()=>{}, reject, resolve);
+      });
+      return await getDownloadURL(ref);
+    }
+
     function renderCommunity(){
       const c = document.getElementById("main-content");
       if(!c) return;
@@ -1567,142 +1553,165 @@
           <i data-lucide="messages-square" class="w-7 h-7 mr-3 text-primary-blue"></i> 資訊交流
         </h2>
 
-        <div class="project-card bg-white p-6 rounded-xl shadow-lg mb-6">
-          <h3 class="text-lg font-semibold text-gray-800 mb-3">發佈貼文</h3>
-          <form id="community-post-form" class="space-y-4">
+        <div class="project-card bg-white p-6 rounded-xl shadow mb-6">
+          <h3 class="text-lg font-semibold text-gray-800 mb-3">分享內容</h3>
+          <form id="post-form" class="space-y-3">
             <div>
-              <label class="block text-sm text-gray-700">內容（文字/文章）</label>
-              <textarea id="post-text" rows="3" class="mt-1 w-full rounded-md border-gray-300 p-2 border" placeholder="分享最新進度、心得或文章..."></textarea>
+              <label class="block text-sm text-gray-700">內容類型</label>
+              <select id="post-type" class="mt-1 w-full rounded-md border-gray-300 p-2 border">
+                <option value="text">文字</option>
+                <option value="link">連結</option>
+                <option value="image">圖片</option>
+                <option value="article">文章</option>
+              </select>
             </div>
-            <div>
-              <label class="block text-sm text-gray-700">連結（選填）</label>
-              <input id="post-link" type="url" class="mt-1 w-full rounded-md border-gray-300 p-2 border" placeholder="https://example.com/article"/>
+
+            <div id="field-title" class="hidden">
+              <label class="block text-sm text-gray-700">標題</label>
+              <input id="post-title" type="text" class="mt-1 w-full rounded-md border-gray-300 p-2 border" placeholder="文章/連結標題">
             </div>
-            <div>
-              <label class="block text-sm text-gray-700">圖片（選填，可多張）</label>
-              <input id="post-images" type="file" accept="image/*" multiple class="mt-1 w-full rounded-md border-gray-300 p-2 border bg-white"/>
-              <p class="text-xs text-gray-500 mt-1">最多上傳 3 張圖片，每張建議小於 5MB。</p>
+
+            <div id="field-url" class="hidden">
+              <label class="block text-sm text-gray-700">連結網址</label>
+              <input id="post-url" type="url" class="mt-1 w-full rounded-md border-gray-300 p-2 border" placeholder="https://">
             </div>
-            <div class="flex justify-end gap-3">
+
+            <div id="field-image" class="hidden">
+              <label class="block text-sm text-gray-700">上傳圖片</label>
+              <input id="post-image" type="file" accept="image/*" class="mt-1 w-full text-sm">
+            </div>
+
+            <div id="field-text">
+              <label class="block text-sm text-gray-700">內容</label>
+              <textarea id="post-text" rows="3" class="mt-1 w-full rounded-md border-gray-300 p-2 border" placeholder="說點什麼..."></textarea>
+            </div>
+
+            <div class="flex justify-end">
               <button type="submit" class="px-4 py-2 bg-primary-blue text-white rounded-lg hover:bg-blue-700">發佈</button>
             </div>
             <div id="post-feedback" class="text-sm"></div>
           </form>
         </div>
 
-        <div id="community-feed" class="space-y-4">
-          ${communityPosts.map(renderPostCard).join("")}
+        <div class="space-y-4" id="post-feed">
+          ${ renderPostCards(communityPosts) }
         </div>
       `;
       if(window.lucide?.createIcons) lucide.createIcons();
 
-      function renderPostCard(p){
-        const author = escapeHtml(p.authorName || p.authorEmail || "匿名");
-        const when = p.createdAt?.toDate ? p.createdAt.toDate().toLocaleString() : (p.createdAt || "");
-        const imgs = Array.isArray(p.images) ? p.images : [];
-        const linkHtml = p.link ? `<a class="text-primary-blue hover:underline break-words" href="${escapeHtml(p.link)}" target="_blank">${escapeHtml(p.link)}</a>` : "";
-        return `
-          <div class="border rounded-xl bg-white p-4">
-            <div class="flex items-center justify-between">
-              <div class="text-sm text-gray-600"><span class="font-semibold">${author}</span> ・ <span>${escapeHtml(when)}</span></div>
-              ${ currentUserId && (p.authorId===currentUserId) ? `<button class="text-red-600 text-sm hover:underline" data-action="del-post" data-id="${escapeHtml(p.id)}">刪除</button>` : "" }
-            </div>
-            <div class="mt-3 whitespace-pre-wrap text-gray-800 text-sm">${escapeHtml(p.text||"")}</div>
-            ${ linkHtml ? `<div class="mt-2 text-sm">${linkHtml}</div>` : "" }
-            ${ imgs.length ? `
-              <div class="mt-3 grid grid-cols-2 md:grid-cols-3 gap-2">
-                ${imgs.map(u=>`
-                  <a href="${escapeHtml(u)}" target="_blank" class="block">
-                    <img src="${escapeHtml(u)}" class="w-full h-40 object-cover rounded-md border" alt="post image"/>
-                  </a>`).join("")}
-              </div>` : "" }
-          </div>
-        `;
+      // 類型切換顯示欄位
+      const typeEl = document.getElementById("post-type");
+      const fieldTitle = document.getElementById("field-title");
+      const fieldUrl = document.getElementById("field-url");
+      const fieldImage = document.getElementById("field-image");
+      const fieldText = document.getElementById("field-text");
+      function updateFields(){
+        const t = typeEl.value;
+        fieldTitle.classList.toggle("hidden", !(t==="article" || t==="link"));
+        fieldUrl.classList.toggle("hidden", t!=="link");
+        fieldImage.classList.toggle("hidden", t!=="image");
+        fieldText.classList.toggle("hidden", false); // 皆可填文字（作為說明）
       }
-
-      // 重新渲染 feed
-      function refreshFeed(){
-        const feed = document.getElementById("community-feed");
-        if(!feed) return;
-        feed.innerHTML = communityPosts.map(renderPostCard).join("");
-      }
+      typeEl.addEventListener("change", updateFields);
+      updateFields();
 
       // 發佈貼文
-      document.getElementById("community-post-form")?.addEventListener("submit", async (e)=>{
+      document.getElementById("post-form")?.addEventListener("submit", async (e)=>{
         e.preventDefault();
         const feedback = document.getElementById("post-feedback");
-        if(!isAuthorized()){
-          feedback.className="text-sm text-red-600";
-          feedback.textContent="請先登入再發佈貼文。";
-          return;
-        }
+        if(!isAuthorized()){ feedback.className="text-sm text-red-600"; feedback.textContent="請先登入再發佈。"; return; }
+
+        const postType = document.getElementById("post-type").value;
+        const title = document.getElementById("post-title").value.trim();
+        const url = document.getElementById("post-url").value.trim();
         const text = document.getElementById("post-text").value.trim();
-        const link = document.getElementById("post-link").value.trim();
-        const filesInput = document.getElementById("post-images");
-        const fileList = Array.from(filesInput?.files || []);
-        const images = [];
+        const imageFile = document.getElementById("post-image").files?.[0];
+
         try{
-          feedback.className="text-sm text-gray-700"; feedback.textContent="發佈中...";
-          const max = Math.min(3, fileList.length);
-          for(let i=0;i<max;i++){
-            const f = fileList[i];
-            if(!f) continue;
-            const path = `artifacts/${APP_ID}/public/uploads/community/${currentUserId}/${Date.now()}_${i}_${f.name}`;
-            const ref = sRef(storage, path);
-            await new Promise((resolve, reject)=>{
-              const task = uploadBytesResumable(ref, f);
-              task.on("state_changed", null, reject, resolve);
-            });
-            const url = await getDownloadURL(ref);
-            images.push(url);
+          feedback.className="text-sm text-gray-600"; feedback.textContent="上傳中...";
+          let imageUrl = "";
+          if(postType==="image" && imageFile){
+            imageUrl = await uploadImageAndGetUrl(imageFile);
           }
-          await addDoc(collection(db, COMMUNITY_COLLECTION_PATH), {
-            text, link, images,
-            authorId: currentUserId,
-            authorName: userProfile.displayName||"",
-            authorEmail: userProfile.email||"",
-            createdAt: serverTimestamp()
-          });
-          feedback.className="text-sm text-secondary-green"; feedback.textContent="已發佈。";
-          document.getElementById("community-post-form").reset();
+
+          // 基本欄位
+          const payload = {
+            postType, title, url, text, imageUrl,
+            authorName: userProfile.displayName || userProfile.email || "使用者",
+            authorEmail: userProfile.email || "",
+            authorPhotoURL: userProfile.photoURL || "",
+            createdAt: serverTimestamp(),
+            reporterId: currentUserId
+          };
+          // 基本驗證
+          if(postType==="link" && !url){ feedback.className="text-sm text-red-600"; feedback.textContent="請輸入連結網址。"; return; }
+          if(postType==="image" && !imageUrl){ feedback.className="text-sm text-red-600"; feedback.textContent="請選擇圖片檔案。"; return; }
+          if(postType==="article" && !title){ feedback.className="text-sm text-red-600"; feedback.textContent="請輸入文章標題。"; return; }
+          if(!text && postType!=="image" && postType!=="link"){ feedback.className="text-sm text-red-600"; feedback.textContent="請輸入內容。"; return; }
+
+          await addDoc(collection(db, COMMUNITY_COLLECTION_PATH), payload);
+          feedback.className="text-sm text-secondary-green"; feedback.textContent="發佈成功！";
+          (document.getElementById("post-form")).reset();
+          updateFields();
         }catch(err){
           console.error(err);
-          feedback.className="text-sm text-red-600"; feedback.textContent="發佈失敗。";
+          feedback.className="text-sm text-red-600"; feedback.textContent="發佈失敗：上傳或資料庫錯誤。";
         }
       });
 
-      // 刪除貼文（作者本人）
-      document.getElementById("community-feed")?.addEventListener("click", async (e)=>{
-        const btn = e.target.closest("button[data-action='del-post']");
-        if(!btn) return;
-        const id = btn.getAttribute("data-id");
-        const post = communityPosts.find(p=>p.id===id);
-        if(!post) return;
-        if(post.authorId !== currentUserId){ showModal("無權限","只能刪除自己的貼文。"); return; }
-        if(!confirm("確定刪除這則貼文？")) return;
-        try{
-          await deleteDoc(doc(db, COMMUNITY_COLLECTION_PATH, id));
-        }catch(err){
-          console.error(err);
-          showModal("刪除失敗","無法刪除貼文。");
-        }
-      });
-
-      // 即時更新 feed
-      refreshFeed();
-      if(window.lucide?.createIcons) lucide.createIcons();
+      // 重新渲染貼文串（在快照更新時）
+      function rerenderFeed(){
+        const feed = document.getElementById("post-feed");
+        if(feed) feed.innerHTML = renderPostCards(communityPosts);
+        if(window.lucide?.createIcons) lucide.createIcons();
+      }
+      // 綁在全域以便 onSnapshot 後呼叫
+      window.__rerenderCommunityFeed = rerenderFeed;
+      // 立即一次
+      rerenderFeed();
     }
 
-    // ---- 啟動 ----
+    function renderPostCards(list){
+      if(!list || !list.length){
+        return `<div class="text-sm text-gray-500">目前沒有貼文，搶先分享第一則！</div>`;
+      }
+      return list.map(p=>{
+        const when = p.createdAt?.toDate ? p.createdAt.toDate().toLocaleString() : (p.createdAt || "");
+        return `
+          <div class="project-card bg-white p-4 rounded-xl shadow">
+            <div class="flex items-center gap-3">
+              <div class="w-9 h-9 rounded-full bg-gray-200 overflow-hidden flex-shrink-0">
+                ${ p.authorPhotoURL ? `<img src="${escapeHtml(p.authorPhotoURL)}" class="w-full h-full object-cover">`
+                                    : `<div class="w-full h-full flex items-center justify-center text-black/70 font-bold text-xs">${escapeHtml((p.authorName||'U').charAt(0).toUpperCase())}</div>` }
+              </div>
+              <div class="min-w-0">
+                <div class="text-sm font-semibold">${escapeHtml(p.authorName||"使用者")}</div>
+                <div class="text-xs text-gray-500">${escapeHtml(when)}</div>
+              </div>
+            </div>
+
+            <div class="mt-3 text-sm text-gray-800 whitespace-pre-wrap">${escapeHtml(p.text||"")}</div>
+
+            ${ (p.postType==="article" && p.title) ? `<div class="mt-2 text-base font-semibold">${escapeHtml(p.title)}</div>` : "" }
+            ${ (p.postType==="link" && p.url) ? `<div class="mt-2"><a class="text-primary-blue hover:underline break-all" href="${escapeHtml(p.url)}" target="_blank" rel="noopener">${escapeHtml(p.title||p.url)}</a></div>` : "" }
+            ${ (p.postType==="image" && p.imageUrl) ? `<div class="mt-3"><img src="${escapeHtml(p.imageUrl)}" alt="" class="rounded-lg max-h-80 object-contain"></div>` : "" }
+          </div>
+        `;
+      }).join("");
+    }
+
+    // ---- 啟動：讓按鈕先可用，並啟動 Firebase ----
     try { wireEmailAuthButtons(); } catch (_) {}
     try { initFirebase(); } catch (e) {
       console.error("初始化失敗：", e);
       const box = document.getElementById("auth-error");
       if (box) box.textContent = "初始化失敗：" + (e?.message || String(e));
     }
+    // DOM 完成後再保險綁一次
     window.addEventListener("DOMContentLoaded", () => {
       try { wireEmailAuthButtons(); } catch (_) {}
     });
+    // 全域錯誤顯示
     window.addEventListener("error", (e) => {
       const box = document.getElementById("auth-error");
       if (box && !box.textContent) box.textContent = "錯誤：" + (e?.message || String(e.error || e));
@@ -1711,6 +1720,9 @@
       const box = document.getElementById("auth-error");
       if (box && !box.textContent) box.textContent = "執行失敗：" + (e?.reason?.message || String(e.reason || e));
     });
+
+    // 由 onSnapshot 觸發時，若在資訊交流頁面，更新 feed
+    // 這裡不額外加監聽，因 startRealtimeListeners 已經更新 communityPosts 並呼叫 renderCommunity()
   </script>
 </body>
 </html>

@@ -197,7 +197,7 @@
       createUserWithEmailAndPassword, signInWithEmailAndPassword
     } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
     import {
-      getFirestore, doc, addDoc, setDoc, getDoc, updateDoc, deleteDoc,
+      getFirestore, doc, addDoc, setDoc, getDoc, getDocFromServer, updateDoc, deleteDoc,
       onSnapshot, collection, query, orderBy, serverTimestamp, setLogLevel, where
     } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
     import {
@@ -271,6 +271,20 @@
       setTimeout(()=>{ wrapper.classList.remove("scale-95","opacity-0"); wrapper.classList.add("scale-100","opacity-100"); },50);
     }
     function n(v){ return Number(v)||0; }
+    function toCleanText(v){ return (v ?? "").toString().trim(); }
+    function toNonNegativeNumber(v){
+      const num = Number(v);
+      if(!Number.isFinite(num)) return 0;
+      return Math.max(0, num);
+    }
+    function toProgressPercent(v){
+      const num = Number(v);
+      if(!Number.isFinite(num)) return 0;
+      return Math.max(0, Math.min(100, num));
+    }
+    function numbersEqual(a, b, epsilon = 0.0001){
+      return Math.abs((Number(a) || 0) - (Number(b) || 0)) <= epsilon;
+    }
     function clamp01(x){ return Math.max(0, Math.min(1, x)); }
     function fmtMoney(x){ return `$${(Number(x)||0).toLocaleString()}`; }
     function managerOptionsHtml(selected = ""){
@@ -797,20 +811,33 @@
         return;
       }
 
-      const projectId = document.getElementById("proj-id").value.trim();
-      const title = document.getElementById("proj-title").value.trim();
-      const selectedManager = (document.getElementById("proj-manager")?.value || "").trim();
-      const typedManager = (document.getElementById("proj-manager-new")?.value || "").trim();
-      const manager = (typedManager || selectedManager || "").trim();
+      const projectId = toCleanText(document.getElementById("proj-id")?.value);
+      const title = toCleanText(document.getElementById("proj-title")?.value);
+      const selectedManager = toCleanText(document.getElementById("proj-manager")?.value);
+      const typedManager = toCleanText(document.getElementById("proj-manager-new")?.value);
+      const manager = toCleanText(typedManager || selectedManager);
 
-      const personnelBudget = n(document.getElementById("proj-personnel").value);
-      const operatingBudget = n(document.getElementById("proj-operating").value);
-      const equipmentBudget = n(document.getElementById("proj-equipment").value);
+      const personnelBudget = toNonNegativeNumber(document.getElementById("proj-personnel")?.value);
+      const operatingBudget = toNonNegativeNumber(document.getElementById("proj-operating")?.value);
+      const equipmentBudget = toNonNegativeNumber(document.getElementById("proj-equipment")?.value);
       const budget = personnelBudget + operatingBudget + equipmentBudget;
-      const progress = Math.max(0, Math.min(100, n(document.getElementById("proj-progress").value)));
-      const status = document.getElementById("proj-status").value.trim();
-      const needIT = !!document.getElementById("proj-needit").checked;
-      const requiredRoles = Array.from(document.querySelectorAll("#new-project-form input[name='proj-role']:checked")).map(el=>el.value);
+      const progress = toProgressPercent(document.getElementById("proj-progress")?.value);
+      const status = toCleanText(document.getElementById("proj-status")?.value);
+      const needIT = !!document.getElementById("proj-needit")?.checked;
+      const requiredRoles = Array.from(document.querySelectorAll("#new-project-form input[name='proj-role']:checked"))
+        .map(el => toCleanText(el.value))
+        .filter(Boolean);
+
+      const personnelField = document.getElementById("proj-personnel");
+      if(personnelField) personnelField.value = personnelBudget;
+      const operatingField = document.getElementById("proj-operating");
+      if(operatingField) operatingField.value = operatingBudget;
+      const equipmentField = document.getElementById("proj-equipment");
+      if(equipmentField) equipmentField.value = equipmentBudget;
+      const budgetField = document.getElementById("proj-budget");
+      if(budgetField) budgetField.value = budget;
+      const progressField = document.getElementById("proj-progress");
+      if(progressField) progressField.value = progress;
 
       if(!isValidProjectId(projectId)){
         feedback.className="mt-2 text-sm text-red-600"; feedback.textContent="格式錯誤：專案編號僅能包含英數字、底線、連字號，長度 3–64。"; return;
@@ -820,6 +847,9 @@
       }
       if(!title){
         feedback.className="mt-2 text-sm text-red-600"; feedback.textContent="請輸入專案名稱。"; return;
+      }
+      if(!manager){
+        feedback.className="mt-2 text-sm text-red-600"; feedback.textContent="請選擇或輸入主持人。"; return;
       }
 
       try{
@@ -847,21 +877,27 @@
         console.log("[createProject] setDoc OK:", target.path, payload);
 
         // 回讀驗證
-        const check = await getDoc(target);
+        let check;
+        try{
+          check = await getDocFromServer(target);
+        }catch(serverErr){
+          console.warn("[createProject] getDocFromServer failed, fallback to cache", serverErr);
+          check = await getDoc(target);
+        }
         if(!check.exists()){
           throw new Error("寫入後驗證失敗：資料庫未讀到新專案。請檢查 Firestore 規則或網路。");
         }
 
         const saved = check.data() || {};
         const mismatches = [];
-        if((saved.title || "").trim() !== title) mismatches.push("專案名稱");
-        if((saved.manager || "").trim() !== manager) mismatches.push("專案管理人");
-        if(n(saved.personnelBudget) !== personnelBudget) mismatches.push("人事費預算");
-        if(n(saved.operatingBudget) !== operatingBudget) mismatches.push("業務費預算");
-        if(n(saved.equipmentBudget) !== equipmentBudget) mismatches.push("設備費預算");
-        if(n(saved.budget) !== budget) mismatches.push("預算概算");
-        if(n(saved.progress) !== progress) mismatches.push("進度");
-        if((saved.status || "").trim() !== status) mismatches.push("狀態");
+        if(toCleanText(saved.title) !== title) mismatches.push("專案名稱");
+        if(toCleanText(saved.manager) !== manager) mismatches.push("專案管理人");
+        if(!numbersEqual(toNonNegativeNumber(saved.personnelBudget), personnelBudget)) mismatches.push("人事費預算");
+        if(!numbersEqual(toNonNegativeNumber(saved.operatingBudget), operatingBudget)) mismatches.push("業務費預算");
+        if(!numbersEqual(toNonNegativeNumber(saved.equipmentBudget), equipmentBudget)) mismatches.push("設備費預算");
+        if(!numbersEqual(toNonNegativeNumber(saved.budget), budget)) mismatches.push("預算概算");
+        if(!numbersEqual(toProgressPercent(saved.progress), progress)) mismatches.push("進度");
+        if(toCleanText(saved.status) !== status) mismatches.push("狀態");
         if(!!saved.needIT !== needIT) mismatches.push("是否需要資訊人員");
         const savedRoles = Array.isArray(saved.requiredRoles) ? saved.requiredRoles.map(String).sort() : [];
         const expectedRoles = requiredRoles.map(String).sort();
@@ -877,6 +913,22 @@
         feedback.className="mt-2 text-sm text-green-600"; feedback.textContent="專案新增成功並驗證無誤。";
         (document.getElementById("new-project-form"))?.reset();
         document.getElementById("proj-budget").value = 0;
+        const savedProject = {
+          ...saved,
+          id: projectId,
+          title,
+          manager,
+          budget,
+          personnelBudget,
+          operatingBudget,
+          equipmentBudget,
+          progress,
+          status,
+          needIT,
+          requiredRoles
+        };
+        projects = [savedProject, ...projects.filter(p => p.id !== projectId)];
+        rerenderByView();
 
       }catch(err){
         console.error("[createProject] ERROR:", err);

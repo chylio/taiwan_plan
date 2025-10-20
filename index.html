@@ -228,7 +228,7 @@
     const COMMUNITY_COLLECTION_PATH= `artifacts/${APP_ID}/public/community/posts`;
     const WATCHERS_COLLECTION_PATH = `artifacts/${APP_ID}/public/data/project_watchers`;
 
-    const DEFAULT_MANAGERS = ["蔡雅雯","陳乃菁","吳曉琪","蘇琬淳","楊穎潔"];
+    const DEFAULT_MANAGERS = ["蔡雅雯","陳乃菁","吳曉琪","蘇琬淳","楊穎潔","王小明","李小華","張曉安"];
     let managers = [];
 
     let currentView = "dashboard";
@@ -243,7 +243,7 @@
     let miniCalendarInstance = null;
     let detailsWatchersUnsub = null;
 
-    // 新增：專案詳情篩選狀態（主持人）
+    // 專案詳情的主持人篩選狀態
     let detailsFilterPM = "";
 
     function escapeHtml(str){
@@ -354,7 +354,7 @@
 
       const ps = projects.map(p=>({ id:p.id, title:p.title||"", manager:p.manager||"", budget:n(p.budget), progress:n(p.progress), status:p.status||"" }));
       const ts = tasks.filter(t=> inRange(t.dueDate||"", start, end)).map(t=>({
-        id:t.id, projectId:t.projectId||"", taskName:t.taskName||"", assignee:t.assignee||"", projectManager:t.projectManager||"", dueDate:t.dueDate||"", status:t.status||""
+        id:t.id, projectId:t.projectId||"", taskName:t.taskName||"", assignee:(projects.find(p=>p.id===t.projectId)?.manager||""), projectManager:t.projectManager||"", dueDate:t.dueDate||"", status:t.status||""
       }));
       const es = events.filter(ev=> overlapsRange(ev.startDate||"", ev.endDate||ev.startDate||"", start, end)).map(ev=>({
         id:ev.id, projectId:ev.projectId||"", title:ev.title||"", assignee:ev.assignee||"", startDate:ev.startDate||ev.date||"", endDate:ev.endDate||ev.startDate||ev.date||""
@@ -627,7 +627,7 @@
       else if(view==="creation"){ renderProjectCreation(); }
       else if(view==="details"){
         selectedProjectId = (typeof arg === "string" && arg) ? arg : (projects[0]?.id || null);
-        // 初次進入或從其他頁帶入專案，主持人跟隨專案
+        // 初次進入或由外部指定專案時，主持人跟隨該專案
         const proj = projects.find(p=>p.id===selectedProjectId);
         detailsFilterPM = proj?.manager || "";
         renderProjectDetails(selectedProjectId);
@@ -822,7 +822,12 @@
     async function handleNewProjectSubmission(e){
       e.preventDefault();
       const feedback = document.getElementById("project-form-feedback");
-      if(!isAuthorized()){ showModal("請先登入","請先登入後再新增專案。"); return; }
+      if(!isAuthorized()){
+        feedback.className="mt-4 text-sm text-red-600";
+        feedback.textContent="請先登入後再新增專案。";
+        showModal("請先登入","請先登入後再新增專案。");
+        return;
+      }
 
       const projectId = document.getElementById("proj-id").value.trim();
       const title = document.getElementById("proj-title").value.trim();
@@ -842,6 +847,9 @@
       }
       if(projects.some(p=>p.id===projectId)){
         feedback.className="mt-4 text-sm text-red-600"; feedback.textContent=`錯誤：專案編號 ${projectId} 已存在！`; return;
+      }
+      if(!title){
+        feedback.className="mt-4 text-sm text-red-600"; feedback.textContent="請輸入專案名稱。"; return;
       }
 
       try{
@@ -870,12 +878,13 @@
         });
 
         showModal("成功","專案新增成功！已同步備份（SharePoint Flow）。");
+        feedback.className="mt-4 text-sm text-green-600"; feedback.textContent="專案新增成功。";
         document.getElementById("new-project-form").reset();
         document.getElementById("proj-budget").value = 0;
       }catch(err){
         console.error(err);
         feedback.className="mt-4 text-sm text-red-600";
-        feedback.textContent=`專案新增失敗：${err.message}`;
+        feedback.textContent=`專案新增失敗：${err?.message || String(err)}`;
       }
     }
 
@@ -893,7 +902,7 @@
           <form id="new-project-form" class="space-y-4">
             <div>
               <label class="block text-sm font-medium text-gray-700">專案編號（唯一）</label>
-              <input type="text" id="proj-id" required class="mt-1 block w-full rounded-md border-gray-300 p-2 border" placeholder="例如 P-2025-001"/>
+              <input type="text" id="proj-id" required class="mt-1 block w-full rounded-md border-gray-300 p-2 border" placeholder="例如 P-2025-001（允許英數字、_、-）"/>
             </div>
             <div>
               <label class="block text-sm font-medium text-gray-700">專案名稱</label>
@@ -1116,21 +1125,29 @@
       });
     }
 
-    // Planner（留言板風格 + 專案管理人）
+    // Planner（任務管理）—負責人=專案管理人（唯讀）、主持人=自行輸入
     function renderTaskManagement(){
       const c = document.getElementById("main-content");
       if(!c) return;
 
       const projectOptions = projects.length>0
-        ? `<option value="">全部專案</option>` + projects.map(p=>`<option value="${escapeHtml(p.id)}">${escapeHtml(p.id)} - ${escapeHtml(p.title||"")}</option>`).join("")
-        : '<option value="">全部專案</option>';
+        ? `<option value="">選擇專案（可空）</option>` + projects.map(p=>`<option value="${escapeHtml(p.id)}">${escapeHtml(p.id)} - ${escapeHtml(p.title||"")}</option>`).join("")
+        : '<option value="">尚無專案</option>';
 
-      const statusSet = new Set(tasks.map(t => (t.status||"").trim()).filter(Boolean));
-      const statusOptions = ['全部狀態', ...Array.from(statusSet).filter(Boolean)];
-      const assigneeSet = new Set(tasks.map(t => (t.assignee||"").trim()).filter(Boolean));
+      // 以「專案管理人」作為任務的負責人來源
+      const computedAssignee = (t)=> (projects.find(p=>p.id===t.projectId)?.manager || "");
+
+      // 供篩選使用：負責人清單 = 專案管理人
+      const assigneeSet = new Set(tasks.map(t => computedAssignee(t).trim()).filter(Boolean));
       const assigneeOptions = ['全部負責人', ...Array.from(assigneeSet).filter(Boolean)];
+
+      // 主持人清單 = 任務上的 projectManager 文字
       const pmSet = new Set(tasks.map(t => (t.projectManager||"").trim()).filter(Boolean).concat(projects.map(p=>p.manager||"")));
       const pmOptions = ['全部主持人', ...Array.from(pmSet).filter(Boolean)];
+
+      // 狀態清單
+      const statusSet = new Set(tasks.map(t => (t.status||"").trim()).filter(Boolean));
+      const statusOptions = ['全部狀態', ...Array.from(statusSet).filter(Boolean)];
 
       c.innerHTML = `
         <h2 class="text-3xl font-bold text-gray-800 mb-6 border-b pb-2 flex items-center">
@@ -1153,12 +1170,12 @@
               <input id="task-name" type="text" class="mt-1 w-full rounded-md border-gray-300 p-2 border" required>
             </div>
             <div class="md:col-span-1">
-              <label class="block text-sm text-gray-700">負責人</label>
-              <select id="task-assignee" class="mt-1 w-full rounded-md border-gray-300 p-2 border">${managerOptionsHtml()}</select>
+              <label class="block text-sm text-gray-700">負責人（= 專案管理人）</label>
+              <input id="task-assignee" type="text" class="mt-1 w-full rounded-md border-gray-300 p-2 border bg-gray-100" placeholder="依專案自動帶入" readonly>
             </div>
             <div class="md:col-span-1">
-              <label class="block text-sm text-gray-700">主持人</label>
-              <select id="task-pm" class="mt-1 w-full rounded-md border-gray-300 p-2 border">${managerOptionsHtml()}</select>
+              <label class="block text-sm text-gray-700">主持人（自行輸入）</label>
+              <input id="task-pm" type="text" class="mt-1 w-full rounded-md border-gray-300 p-2 border" placeholder="例如：王小明">
             </div>
             <div class="md:col-span-2">
               <label class="block text-sm text-gray-700">到期日</label>
@@ -1183,10 +1200,13 @@
           <div class="grid grid-cols-1 md:grid-cols-6 gap-3">
             <div>
               <label class="block text-xs text-gray-600">專案</label>
-              <select id="flt-project" class="mt-1 w-full rounded-md border-gray-300 p-2 border">${projectOptions}</select>
+              <select id="flt-project" class="mt-1 w-full rounded-md border-gray-300 p-2 border">
+                <option value="">全部專案</option>
+                ${projects.map(p=>`<option value="${escapeHtml(p.id)}">${escapeHtml(p.id)} - ${escapeHtml(p.title||"")}</option>`).join("")}
+              </select>
             </div>
             <div>
-              <label class="block text-xs text-gray-600">負責人</label>
+              <label class="block text-xs text-gray-600">負責人（= 專案管理人）</label>
               <select id="flt-assignee" class="mt-1 w-full rounded-md border-gray-300 p-2 border">
                 ${ assigneeOptions.map(a => `<option value="${escapeHtml(a==='全部負責人'?'':a)}">${escapeHtml(a)}</option>`).join("") }
               </select>
@@ -1222,18 +1242,31 @@
       `;
       if(window.lucide?.createIcons) lucide.createIcons();
 
+      // 新增任務：依專案自動帶出負責人 = 專案管理人
+      function updateAssigneeByProject(){
+        const pid = document.getElementById("task-project").value || "";
+        const pm = projects.find(p=>p.id===pid)?.manager || "";
+        const a = document.getElementById("task-assignee");
+        if(a) a.value = pm;
+      }
+      document.getElementById("task-project")?.addEventListener("change", updateAssigneeByProject);
+      updateAssigneeByProject();
+
       document.getElementById("new-task-form")?.addEventListener("submit", async (e)=>{
         e.preventDefault();
         const feedback = document.getElementById("task-form-feedback");
         if(!isAuthorized()){ feedback.className="text-sm text-red-600"; feedback.textContent="請先登入再新增任務。"; return; }
         const projectId = document.getElementById("task-project").value || "";
         const taskName = document.getElementById("task-name").value.trim();
-        const assignee = document.getElementById("task-assignee").value || "";
-        const projectManager = document.getElementById("task-pm").value || "";
+        const projectManager = document.getElementById("task-pm").value.trim(); // 主持人（自行輸入）
         const dueDate = document.getElementById("task-due").value || "";
-               const status = document.getElementById("task-status").value.trim() || "未開始";
+        const status = document.getElementById("task-status").value.trim() || "未開始";
         const description = document.getElementById("task-desc").value || "";
         if(!taskName){ feedback.className="text-sm text-red-600"; feedback.textContent="請輸入任務名稱。"; return; }
+
+        // 負責人一律採用「所屬專案管理人」
+        const assignee = projects.find(p=>p.id===projectId)?.manager || "";
+
         try{
           const ref = await addDoc(collection(db, TASKS_COLLECTION_PATH), {
             projectId, taskName, description, assignee, projectManager, dueDate, status,
@@ -1241,6 +1274,7 @@
           });
           feedback.className="text-sm text-secondary-green"; feedback.textContent=`新增成功 (ID: ${ref.id})。`;
           (document.getElementById("new-task-form")).reset();
+          updateAssigneeByProject();
           renderRows();
         }catch(err){
           console.error(err);
@@ -1251,8 +1285,8 @@
       function getFilters(){
         return {
           project: document.getElementById("flt-project").value || "",
-          assignee: document.getElementById("flt-assignee").value || "",
-          pm: document.getElementById("flt-pm").value || "",
+          assignee: document.getElementById("flt-assignee").value || "", // 專案管理人
+          pm: document.getElementById("flt-pm").value || "",             // 任務上的主持人（自填）
           status: document.getElementById("flt-status").value || "",
           from: document.getElementById("flt-from").value || "",
           to: document.getElementById("flt-to").value || "",
@@ -1263,8 +1297,9 @@
         const f = getFilters();
         return list.filter(t=>{
           if(f.project && t.projectId !== f.project) return false;
-          if(f.assignee && (t.assignee||"") !== f.assignee) return false;
-          const displayPm = t.projectManager || (projects.find(p=>p.id===t.projectId)?.manager || "");
+          const displayAssignee = computedAssignee(t); // 專案管理人
+          if(f.assignee && displayAssignee !== f.assignee) return false;
+          const displayPm = t.projectManager || ""; // 主持人（自填）
           if(f.pm && displayPm !== f.pm) return false;
           if(f.status && (t.status||"") !== f.status) return false;
           if(f.from && (t.dueDate||"") < f.from) return false;
@@ -1293,7 +1328,8 @@
         const list = applyFilters(sorted);
         container.innerHTML = list.map(t=>{
           const proj = projects.find(p=>p.id===t.projectId);
-          const displayPm = t.projectManager || proj?.manager || "";
+          const displayAssignee = proj?.manager || "";       // 負責人 = 專案管理人
+          const displayPm = t.projectManager || "";           // 主持人 = 任務上自填
           if(editingId === t.id){
             return `
               <div class="project-card bg-white p-4 rounded-xl shadow">
@@ -1307,12 +1343,12 @@
                     <input id="ed-name-${t.id}" type="text" class="w-full rounded-md border-gray-300 p-2 border" value="${escapeHtml(t.taskName||'')}">
                   </div>
                   <div>
-                    <label class="block text-xs text-gray-600">負責人</label>
-                    <select id="ed-assignee-${t.id}" class="w-full rounded-md border-gray-300 p-2 border">${managerOptionsHtml(t.assignee||"")}</select>
+                    <label class="block text-xs text-gray-600">負責人（= 專案管理人）</label>
+                    <input id="ed-assignee-${t.id}" type="text" class="w-full rounded-md border-gray-300 p-2 border bg-gray-100" value="${escapeHtml(displayAssignee)}" readonly>
                   </div>
                   <div>
-                    <label class="block text-xs text-gray-600">主持人</label>
-                    <select id="ed-pm-${t.id}" class="w-full rounded-md border-gray-300 p-2 border">${managerOptionsHtml(displayPm)}</select>
+                    <label class="block text-xs text-gray-600">主持人（自行輸入）</label>
+                    <input id="ed-pm-${t.id}" type="text" class="w-full rounded-md border-gray-300 p-2 border" value="${escapeHtml(displayPm)}">
                   </div>
                   <div>
                     <label class="block text-xs text-gray-600">到期日</label>
@@ -1343,7 +1379,7 @@
                 <div class="mt-1 text-xs text-gray-500">${escapeHtml(t.projectId||"")} ${proj?`- ${escapeHtml(proj.title||"")}`:""}</div>
                 <div class="mt-2 text-sm text-gray-800 whitespace-pre-wrap">${escapeHtml(t.description||"")}</div>
                 <div class="mt-3 flex flex-wrap items-center gap-3 text-sm">
-                  <span class="px-2 py-0.5 rounded-full bg-gray-100 text-gray-700">負責人：${escapeHtml(t.assignee||"")}</span>
+                  <span class="px-2 py-0.5 rounded-full bg-gray-100 text-gray-700">負責人：${escapeHtml(displayAssignee)}</span>
                   <span class="px-2 py-0.5 rounded-full bg-gray-100 text-gray-700">主持人：${escapeHtml(displayPm)}</span>
                   <span class="px-2 py-0.5 rounded-full bg-gray-100 text-gray-700">到期：${escapeHtml(t.dueDate||"-")}</span>
                   <span class="px-2 py-0.5 rounded-full ${badgeClass(t.status)}">${escapeHtml(t.status||"")||"未設定"}</span>
@@ -1362,14 +1398,19 @@
       window.__editTask = function(id){ editingId = id; renderRows(); };
       window.__cancelEditTask = function(){ editingId = null; renderRows(); };
       window.__saveTask = async function(id){
+        const t = tasks.find(x=>x.id===id);
         const taskName = document.getElementById(`ed-name-${id}`).value.trim();
         const description = document.getElementById(`ed-desc-${id}`).value;
-        const assignee = document.getElementById(`ed-assignee-${id}`).value;
-        const projectManager = document.getElementById(`ed-pm-${id}`).value;
+        const projectManager = document.getElementById(`ed-pm-${id}`).value; // 主持人
         const dueDate = document.getElementById(`ed-due-${id}`).value;
         const status = document.getElementById(`ed-status-${id}`).value.trim();
+        // 同步負責人 = 專案管理人（由任務所屬專案決定）
+        const displayAssignee = projects.find(p=>p.id===t.projectId)?.manager || "";
         try{
-          await updateDoc(doc(db, TASKS_COLLECTION_PATH, id), { taskName, description, assignee, projectManager, dueDate, status });
+          await updateDoc(doc(db, TASKS_COLLECTION_PATH, id), {
+            taskName, description, projectManager, dueDate, status,
+            assignee: displayAssignee
+          });
           editingId = null; renderRows();
         }catch(err){
           console.error(err); showModal("更新失敗","任務更新時發生錯誤。");
@@ -1441,11 +1482,12 @@
 
       const tks = tasks.filter(t=>t.projectId===projectId);
       for(const t of tks){
+        const assignee = p.manager || "";
         rows.push({
           type:"task",
           projectId:p.id, projectTitle:p.title||"", manager:p.manager||"",
           budget:Number(p.budget)||0, progress:Number(p.progress)||0, status:p.status||"",
-          taskId:t.id||"", taskName:t.taskName||"", taskAssignee:t.assignee||"",
+          taskId:t.id||"", taskName:t.taskName||"", taskAssignee:assignee,
           taskDueDate:t.dueDate||"", taskStatus:t.status||""
         });
       }
@@ -1470,7 +1512,6 @@
       const c = document.getElementById("main-content");
       if(!c) return;
 
-      // 若有特定 projectId 且主持人篩選與該專案不一致，讓主持人同步到該專案
       if (projectId) {
         const projForArg = projects.find(p=>p.id===projectId);
         if (projForArg && detailsFilterPM !== (projForArg.manager || "")) {
@@ -1478,13 +1519,10 @@
         }
       }
 
-      // 準備主持人清單
       const pmList = Array.from(new Set(projects.map(p=>(p.manager||"").trim()).filter(Boolean))).sort((a,b)=>a.localeCompare(b,'zh-Hant'));
 
-      // 依主持人篩選可選專案
       const candidateProjects = (detailsFilterPM ? projects.filter(p=>(p.manager||"")===detailsFilterPM) : projects).slice().sort((a,b)=>a.id.localeCompare(b.id));
 
-      // 修正當前選擇的專案
       if (!projectId || !candidateProjects.some(p=>p.id===projectId)) {
         selectedProjectId = candidateProjects[0]?.id || projects[0]?.id || null;
       } else {
@@ -1501,7 +1539,6 @@
       const projectEvents = events.filter(e => e.projectId===selectedProjectId).slice(0,20);
       const projectFiles = files.filter(f => f.projectId===selectedProjectId).slice(0,20);
 
-      // 解除舊的追蹤監聽
       if(detailsWatchersUnsub){ try{ detailsWatchersUnsub(); }catch{} detailsWatchersUnsub = null; }
       let watchersCount = 0;
       let userFollowing = false;
@@ -1517,7 +1554,6 @@
         }
       );
 
-      // 篩選列 HTML
       const pmOptionsHtml = [`<option value="">全部主持人</option>`].concat(pmList.map(pm => `<option value="${escapeHtml(pm)}" ${detailsFilterPM===pm?'selected':''}>${escapeHtml(pm)}</option>`)).join("");
       const projectOptionsHtml = candidateProjects.map(cp => `<option value="${escapeHtml(cp.id)}" ${cp.id===selectedProjectId?'selected':''}>${escapeHtml(cp.id)} - ${escapeHtml(cp.title||"")}</option>`).join("");
 
@@ -1526,7 +1562,7 @@
           <i data-lucide="layout-dashboard" class="w-7 h-7 mr-3 text-primary-blue"></i> 專案詳情
         </h2>
 
-        <!-- 新增：主持人/專案 對應篩選列 -->
+        <!-- 主持人/專案 對應篩選列 -->
         <div class="project-card bg-white p-4 rounded-xl shadow mb-4">
           <div class="grid grid-cols-1 md:grid-cols-5 gap-3">
             <div class="md:col-span-2">
@@ -1595,14 +1631,15 @@
                   <tbody class="divide-y divide-gray-200 bg-white">
                     ${
                       projectTasks.length ? projectTasks.map(t=>{
-                        const pm = t.projectManager || p.manager || "";
+                        const assigneeDisplay = p.manager || "";
+                        const pm = t.projectManager || "";
                         return `
                           <tr>
                             <td class="px-3 py-2 text-sm">
                               <div class="font-medium">${escapeHtml(t.taskName||"")}</div>
                               ${t.description? `<div class="text-xs text-gray-500">${escapeHtml(t.description)}</div>`:""}
                             </td>
-                            <td class="px-3 py-2 text-sm">${escapeHtml(t.assignee||"")}</td>
+                            <td class="px-3 py-2 text-sm">${escapeHtml(assigneeDisplay)}</td>
                             <td class="px-3 py-2 text-sm">${escapeHtml(pm)}</td>
                             <td class="px-3 py-2 text-sm">${escapeHtml(t.dueDate||"")}</td>
                             <td class="px-3 py-2 text-sm">${escapeHtml(t.status||"")}</td>

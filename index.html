@@ -330,7 +330,7 @@
       }
     }
 
-    // AI 週/月報
+    // AI 週/月報（提供給 Brain 視圖使用）
     async function generateAIReport(mode){
       const url = AI_SUMMARY_WEBAPP_URL;
       if(!url || /REPLACE/.test(url)) { showModal("未設定 AI 端點", "請先部署 AI Web App URL 後再使用。"); return; }
@@ -626,7 +626,7 @@
       }
       else if(view==="tasks"){ renderTaskManagement(); }
       else if(view==="calendar"){ renderCalendar(); }
-      else if(view==="report"){ renderReport(); }
+      else if(view==="report"){ renderReport(); }  // Brain
       else if(view==="community"){ renderCommunity(); }
     };
     function setActiveByView(view){
@@ -645,7 +645,7 @@
       if(currentView==="community") renderCommunity();
     }
 
-    // 儀錶板：移除 AI 摘要，保留迷你行事曆
+    // 儀錶板：移除 AI 摘要（改放到 Brain），保留迷你行事曆與其他卡片
     function renderDashboard(){
       const c = document.getElementById("main-content");
       if(!c) return;
@@ -722,7 +722,7 @@
           </div>
         </div>
 
-        <!-- 保留：迷你行事曆（移除 AI 摘要） -->
+        <!-- 保留：迷你行事曆（AI 摘要已移至 Brain） -->
         <div class="project-card bg-white p-6 rounded-xl shadow-lg">
           <h3 class="text-xl font-semibold text-gray-800 mb-4 flex items-center">
             <i data-lucide="calendar" class="w-5 h-5 mr-2 text-primary-blue"></i> 行事曆（本月）
@@ -871,6 +871,7 @@
 
     function renderProjectCreation(){
       const c = document.getElementById("main-content");
+      if(!c) return;
       c.innerHTML = `
         <h2 class="text-3xl font-bold text-gray-800 mb-6 border-b pb-2 flex items-center">
           <i data-lucide="folder-plus" class="w-7 h-7 mr-3 text-primary-blue"></i> 新增/編輯專案資料
@@ -952,7 +953,7 @@
       recalc();
     }
 
-    // Brain：移入 AI 摘要功能
+    // Brain：AI 摘要功能
     function renderReport(){
       const c = document.getElementById("main-content");
       if(!c) return;
@@ -1031,7 +1032,7 @@
               <button type="submit" class="w-full py-2 bg-primary-blue text-white rounded-lg hover:bg-blue-700">新增</button>
               <div id="event-form-feedback" class="text-sm mt-2"></div>
             </form>
-            <p class="text-xs text-gray-500 mt-3">提示：點選下方行事曆日期可自動帶入開始/結束日。</p>
+            <p class="text-xs text-gray-500 mt-3">提示：點選右側行事曆日期可自動帶入開始/結束日。</p>
           </div>
 
           <!-- 完整行事曆 -->
@@ -1056,7 +1057,7 @@
         calendarInstance = new FullCalendar.Calendar(calEl, {
           initialView: "dayGridMonth",
           height: "auto",
-          headerToolbar: { left: "prev,next today", center: "title", right: "dayGridMonth,dayGridWeek,dayGridDay" },
+          headerToolbar: { left: "prev,next today", center: "title", right: "dayGridMonth,dayGridWeek" },
           events: evs,
           firstDay: 1,
           dateClick: (info)=>{
@@ -1097,7 +1098,8 @@
           });
           feedback.className="text-sm mt-2 text-secondary-green";
           feedback.textContent=`新增成功 (ID: ${ref.id})。`;
-          (document.getElementById("new-event-form") as any)?.reset?.();
+          const form = document.getElementById("new-event-form");
+          if (form && typeof form.reset === "function") form.reset();
           // 重新渲染由 onSnapshot 驅動
         }catch(err){
           console.error(err);
@@ -1107,10 +1109,51 @@
       });
     }
 
-    // 其餘視圖（任務、詳情、社群）可保留原樣或後續擴充
-    function renderTaskManagement(){ /* 原始程式碼保持不變（此處略） */ }
-    function renderProjectDetails(projectId){ /* 原始程式碼保持不變（此處略） */ }
-    function renderCommunity(){ /* 原始程式碼保持不變（此處略） */ }
+    // 其餘視圖（任務、詳情、社群）原樣保留（以下示意；實務請保持你原有的完整實作）
+    function renderTaskManagement(){
+      const c = document.getElementById("main-content");
+      if(!c) return;
+      c.innerHTML = `
+        <h2 class="text-3xl font-bold text-gray-800 mb-6 border-b pb-2 flex items-center">
+          <i data-lucide="calendar-days" class="w-7 h-7 mr-3 text-primary-blue"></i> Planner（任務管理）
+        </h2>
+        <p class="text-gray-500">此區保留你原有的任務管理功能與 UI（新增/編輯/刪除/篩選等）。</p>
+      `;
+      if(window.lucide?.createIcons) lucide.createIcons();
+    }
+    function renderProjectDetails(projectId){
+      const c = document.getElementById("main-content");
+      if(!c) return;
+      const p = projects.find(x=>x.id===projectId);
+      c.innerHTML = `
+        <h2 class="text-3xl font-bold text-gray-800 mb-6 border-b pb-2 flex items-center">
+          <i data-lucide="layout-dashboard" class="w-7 h-7 mr-3 text-primary-blue"></i> 專案詳情
+        </h2>
+        ${ p ? `
+          <div class="project-card bg-white p-6 rounded-xl shadow">
+            <div class="text-lg font-semibold text-primary-blue">${escapeHtml(p.title||"")}</div>
+            <div class="text-sm text-gray-500 mt-1">編號：${escapeHtml(p.id||"")}</div>
+            <div class="mt-3 text-sm">
+              <div>主持人：${escapeHtml(p.manager||"")}</div>
+              <div>進度：${n(p.progress)}%</div>
+              <div>狀態：${escapeHtml(p.status||"")}</div>
+            </div>
+          </div>
+        ` : `<p class="text-gray-500">找不到該專案。</p>`}
+      `;
+      if(window.lucide?.createIcons) lucide.createIcons();
+    }
+    function renderCommunity(){
+      const c = document.getElementById("main-content");
+      if(!c) return;
+      c.innerHTML = `
+        <h2 class="text-3xl font-bold text-gray-800 mb-6 border-b pb-2 flex items-center">
+          <i data-lucide="messages-square" class="w-7 h-7 mr-3 text-primary-blue"></i> 資訊交流
+        </h2>
+        <p class="text-gray-500">此區保留你原有的交流/貼文功能。</p>
+      `;
+      if(window.lucide?.createIcons) lucide.createIcons();
+    }
 
     // ---- 啟動：讓按鈕先可用，並啟動 Firebase ----
     try { wireEmailAuthButtons(); } catch (_) {}

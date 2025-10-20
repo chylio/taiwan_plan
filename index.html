@@ -129,7 +129,7 @@
                     onclick="signInWithEmailPassword()">以帳號密碼登入</button>
             <button id="btn-email-signup"
                     type="button"
-                    class="w-full py-3 rounded-xl bg-secondary-green hover:bg-green-700 text-white font-semibold"
+                    class="w-full py-3 rounded-xl bg-secondary-green hover:bg-green-700 text白 font-semibold"
                     onclick="signUpWithEmailPassword()">註冊新帳號</button>
           </div>
           <div id="auth-error" class="text-sm text-red-600"></div>
@@ -143,7 +143,7 @@
 
   <!-- 應用主殼 -->
   <div id="app-shell" class="hidden">
-    <aside id="app-sidebar" class="fixed inset-y-2 left-2 z-10 rounded-2xl bg-black text-white shadow-2xl flex flex-col justify-between py-3 transition-all duration-200 expanded" style="width:240px;">
+    <aside id="app-sidebar" class="fixed inset-y-2 left-2 z-10 rounded-2xl bg黑 text-white shadow-2xl flex flex-col justify-between py-3 transition-all duration-200 expanded" style="width:240px;">
       <div class="w-full">
         <div class="flex items-center justify-between px-3 mb-2">
           <button class="w-10 h-10 rounded-xl bg-gradient-to-br from-pink-500 via-purple-500 to-indigo-500 shadow-md" title="Home" onclick="setView('dashboard')"></button>
@@ -243,6 +243,9 @@
     let miniCalendarInstance = null;
     let detailsWatchersUnsub = null;
 
+    // 專案編輯狀態
+    let editingProjectId = null;
+
     function escapeHtml(str){
       if(str==null) return "";
       return String(str).replace(/&/g,"&amp;").replace(/</g,"&lt;")
@@ -296,6 +299,16 @@
       URL.revokeObjectURL(url);
     }
 
+    // 嘗試從 Firebase Storage 公開 URL 解析出檔案路徑（/o/<path>?...）
+    function tryGetStoragePathFromUrl(url){
+      try{
+        if(!url) return "";
+        const m = String(url).match(/\/o\/([^?]+)/);
+        if(!m) return "";
+        return decodeURIComponent(m[1]); // e.g. project_uploads/PROJ/xxx.png
+      }catch{ return ""; }
+    }
+
     // 內部通知（可略）
     const IS_PAGES = location.hostname.endsWith(".github.io");
     async function sendTeamsNotification(title,text,color="0078D4"){
@@ -312,6 +325,7 @@
 
     // SharePoint 備份：新增專案成功後呼叫（非阻斷）
     async function backupProjectToSharePoint(p){
+      const SHAREPOINT_FLOW_URL   = window.__sharepoint_flow_url || "";
       if(!SHAREPOINT_FLOW_URL || /REPLACE/.test(SHAREPOINT_FLOW_URL)) return;
       const body = {
         id: p.id, title: p.title, manager: p.manager,
@@ -334,7 +348,7 @@
 
     // AI 摘要（Brain）
     async function generateAIReport(mode){
-      const url = AI_SUMMARY_WEBAPP_URL;
+      const url = window.__ai_summary_webapp_url || "";
       if(!url || /REPLACE/.test(url)) { showModal("未設定 AI 端點", "請先部署 AI Web App URL 後再使用。"); return; }
       const box = document.getElementById("ai-summary-box");
       const dl  = document.getElementById("btn-ai-download");
@@ -381,7 +395,7 @@
       }
     }
 
-    // 初始化 Firebase
+    // ���始化 Firebase
     async function initFirebase(){
       if(!firebaseConfig) { console.error("缺少 Firebase 設定"); return; }
       const app = initializeApp(firebaseConfig);
@@ -712,23 +726,23 @@
             <div class="w-full bg-gray-200 rounded-full h-3"><div class="progress-bar h-3 rounded-full ${barClass(pRate, pRemain)}" style="width:${(pRate*100).toFixed(0)}%"></div></div>
             <div class="mt-2 text-sm text-gray-700 flex justify-between"><span>已用：<strong>${fmtMoney(personnelUsed)}</strong>（${(pRate*100).toFixed(0)}%）</span><span>${pRemain>=0 ? `餘額：${fmtMoney(pRemain)}` : `超支：${fmtMoney(-pRemain)}`}</span></div>
           </div>
-          <div class="project-card bg-white p-6 rounded-xl shadow-lg border-t-4 border-primary-blue">
+          <div class="project-card bg白 p-6 rounded-xl shadow-lg border-t-4 border-primary-blue">
             <div class="flex items-center justify-between mb-2"><div class="font-semibold text-gray-800">業務費總預算</div><div class="text-sm text-gray-500">${fmtMoney(oc)}</div></div>
             <div class="w-full bg-gray-200 rounded-full h-3"><div class="progress-bar h-3 rounded-full ${barClass(oRate, oRemain)}" style="width:${(oRate*100).toFixed(0)}%"></div></div>
             <div class="mt-2 text-sm text-gray-700 flex justify-between"><span>已用：<strong>${fmtMoney(operatingUsed)}</strong>（${(oRate*100).toFixed(0)}%）</span><span>${oRemain>=0 ? `餘額：${fmtMoney(oRemain)}` : `超支：${fmtMoney(-oRemain)}`}</span></div>
           </div>
-          <div class="project-card bg-white p-6 rounded-xl shadow-lg border-t-4 border-primary-blue">
+          <div class="project-card bg白 p-6 rounded-xl shadow-lg border-t-4 border-primary-blue">
             <div class="flex items-center justify-between mb-2"><div class="font-semibold text-gray-800">設備費總預算</div><div class="text-sm text-gray-500">${fmtMoney(ec)}</div></div>
             <div class="w-full bg-gray-200 rounded-full h-3"><div class="progress-bar h-3 rounded-full ${barClass(eRate, eRemain)}" style="width:${(eRate*100).toFixed(0)}%"></div></div>
             <div class="mt-2 text-sm text-gray-700 flex justify-between"><span>已用：<strong>${fmtMoney(equipmentUsed)}</strong>（${(eRate*100).toFixed(0)}%）</span><span>${eRemain>=0 ? `餘額：${fmtMoney(eRemain)}` : `超支：${fmtMoney(-eRemain)}`}</span></div>
           </div>
         </div>
 
-        <div class="project-card bg-white p-6 rounded-xl shadow-lg">
+        <div class="project-card bg白 p-6 rounded-xl shadow-lg">
           <h3 class="text-xl font-semibold text-gray-800 mb-4 flex items-center">
             <i data-lucide="calendar" class="w-5 h-5 mr-2 text-primary-blue"></i> 行事曆（本月）
           </h3>
-          <div id="mini-calendar" class="rounded-lg border bg-white" style="min-height:520px;"></div>
+          <div id="mini-calendar" class="rounded-lg border bg白" style="min-height:520px;"></div>
           <div class="mt-3 text-right">
             <button class="inline-flex items-center gap-2 text-primary-blue hover:text-blue-700 text-sm" onclick="setView('calendar')">
               <i data-lucide="arrow-right" class="w-4 h-4"></i> 前往完整行事曆
@@ -736,14 +750,14 @@
           </div>
         </div>
 
-        <div class="bg-white p-6 rounded-xl shadow-lg mt-8">
+        <div class="bg白 p-6 rounded-xl shadow-lg mt-8">
           <h3 class="text-xl font-semibold text-gray-800 mb-4">所有專案概覽</h3>
           ${
-            totalProjects===0 ? `
+            empty ? `
             <div class="text-center py-10">
               <i data-lucide="alert-triangle" class="w-10 h-10 text-yellow-500 mx-auto mb-4"></i>
               <p class="text-lg text-gray-600">目前沒有專案資料。</p>
-              <button onclick="setView('creation')" class="mt-4 px-4 py-2 bg-primary-blue text-white rounded-lg hover:bg-blue-700 transition">
+              <button onclick="setView('creation')" class="mt-4 px-4 py-2 bg-primary-blue text白 rounded-lg hover:bg-blue-700 transition">
                 <i data-lucide="plus" class="w-5 h-5 inline mr-1"></i> 新增第一個專案
               </button>
             </div>` : `
@@ -758,7 +772,7 @@
                     <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">操作</th>
                   </tr>
                 </thead>
-                <tbody class="bg-white divide-y divide-gray-200">
+                <tbody class="bg白 divide-y divide-gray-200">
                   ${projects.map(p=>{
                     const prog = n(p.progress);
                     const bar = prog>=95 ? "bg-secondary-green" : (prog<50?"bg-accent-orange":"bg-primary-blue");
@@ -842,7 +856,7 @@
       try{
         if(typedManager){
           const exists = managers.some(m => (m.name||"") === typedManager);
-          if(!exists){
+        if(!exists){
             await addDoc(collection(db, MANAGERS_COLLECTION_PATH), {
               name: typedManager, email:"", title:"",
               createdAt: serverTimestamp(), reporterId: currentUserId
@@ -883,7 +897,7 @@
           <i data-lucide="folder-plus" class="w-7 h-7 mr-3 text-primary-blue"></i> 新增/編輯專案資料
         </h2>
 
-        <div class="bg-white p-6 rounded-xl shadow-lg mb-8">
+        <div class="bg白 p-6 rounded-xl shadow-lg mb-8">
           <h3 class="text-xl font-semibold text-gray-800 mb-4 border-b pb-2">新增專案</h3>
           <form id="new-project-form" class="space-y-4">
             <div>
@@ -936,7 +950,7 @@
             </div>
 
             <div class="flex justify-end">
-              <button type="submit" class="px-4 py-2 bg-primary-blue text-white rounded-lg hover:bg-blue-700">新增專案</button>
+              <button type="submit" class="px-4 py-2 bg-primary-blue text白 rounded-lg hover:bg-blue-700">新增專案</button>
             </div>
             <div id="project-form-feedback" class="text-sm"></div>
           </form>
@@ -968,10 +982,10 @@
           <i data-lucide="brain" class="w-7 h-7 mr-3 text-primary-blue"></i> Brain - AI 摘要
         </h2>
 
-        <div class="project-card bg-white p-6 rounded-xl shadow-lg">
+        <div class="project-card bg白 p-6 rounded-xl shadow-lg">
           <p class="text-sm text-gray-500 mb-3">依據當月/當週的專案、任務與行事曆資料，自動生成摘要報告。</p>
           <div class="flex flex-wrap gap-3 mb-3">
-            <button class="px-3 py-2 rounded-lg bg-primary-blue text-white hover:bg-blue-700 text-sm" onclick="generateAIReport('week')">產生本週摘要</button>
+            <button class="px-3 py-2 rounded-lg bg-primary-blue text白 hover:bg-blue-700 text-sm" onclick="generateAIReport('week')">產生本週摘要</button>
             <button class="px-3 py-2 rounded-lg bg-secondary-green text白 hover:bg-green-700 text-sm" onclick="generateAIReport('month')">產生本月摘要</button>
             <button id="btn-ai-download" class="px-3 py-2 rounded-lg bg-gray-200 text-gray-700 hover:bg-gray-300 text-sm" disabled>下載摘要</button>
           </div>
@@ -1003,7 +1017,7 @@
         </h2>
 
         <div class="grid grid-cols-1 lg:grid-cols-4 gap-6">
-          <div class="lg:col-span-1 project-card bg-white p-5 rounded-xl shadow">
+          <div class="lg:col-span-1 project-card bg白 p-5 rounded-xl shadow">
             <h3 class="text-lg font-semibold text-gray-800 mb-3 flex items-center">
               <i data-lucide="plus" class="w-5 h-5 mr-2 text-primary-blue"></i> 新增事項
             </h3>
@@ -1084,6 +1098,10 @@
         }
         const title = document.getElementById("ev-title").value.trim();
         const projectId = document.getElementById("ev-project").value || "";
+        theAssignee:
+        {
+          // 防止 null
+        }
         const assignee = document.getElementById("ev-assignee").value || "";
         const startDate = document.getElementById("ev-start").value;
         const endDate = document.getElementById("ev-end").value || startDate;
@@ -1111,7 +1129,7 @@
       });
     }
 
-    // Planner（留言板風格 + 專案管理人）—— 略，與前版相同（未改動）
+    // Planner（留言板風格 + 專案管理人）
     function renderTaskManagement(){
       const c = document.getElementById("main-content");
       if(!c) return;
@@ -1132,7 +1150,7 @@
           <i data-lucide="calendar-days" class="w-7 h-7 mr-3 text-primary-blue"></i> Planner（任務管理）
         </h2>
 
-        <div class="project-card bg-white p-6 rounded-xl shadow mb-8">
+        <div class="project-card bg白 p-6 rounded-xl shadow mb-8">
           <h3 class="text-lg font-semibold text-gray-800 mb-4 flex items-center">
             <i data-lucide="plus" class="w-5 h-5 mr-2 text-primary-blue"></i> 新增任務
           </h3>
@@ -1168,13 +1186,13 @@
               <textarea id="task-desc" rows="2" class="mt-1 w-full rounded-md border-gray-300 p-2 border" placeholder="任務描述（選填）"></textarea>
             </div>
             <div class="md:col-span-6 flex justify-end">
-              <button type="submit" class="px-4 py-2 bg-primary-blue text-white rounded-lg hover:bg-blue-700">新增</button>
+              <button type="submit" class="px-4 py-2 bg-primary-blue text白 rounded-lg hover:bg-blue-700">新增</button>
             </div>
             <div id="task-form-feedback" class="text-sm md:col-span-6"></div>
           </form>
         </div>
 
-        <div class="project-card bg-white p-4 rounded-xl shadow mb-4">
+        <div class="project-card bg白 p-4 rounded-xl shadow mb-4">
           <div class="grid grid-cols-1 md:grid-cols-6 gap-3">
             <div>
               <label class="block text-xs text-gray-600">專案</label>
@@ -1230,11 +1248,11 @@
         const description = document.getElementById("task-desc").value || "";
         if(!taskName){ feedback.className="text-sm text-red-600"; feedback.textContent="請輸入任務名稱。"; return; }
         try{
-          await addDoc(collection(db, TASKS_COLLECTION_PATH), {
+          const ref = await addDoc(collection(db, TASKS_COLLECTION_PATH), {
             projectId, taskName, description, assignee, projectManager, dueDate, status,
             createdAt: serverTimestamp(), reporterId: currentUserId
           });
-          feedback.className="text-sm text-secondary-green"; feedback.textContent=`新增成功。`;
+          feedback.className="text-sm text-secondary-green"; feedback.textContent=`新增成功 (ID: ${ref.id})。`;
           (document.getElementById("new-task-form")).reset();
           renderRows();
         }catch(err){
@@ -1273,6 +1291,7 @@
       }
 
       let editingId = null;
+
       function badgeClass(status){
         const s = (status||"").toLowerCase();
         if(s.includes("完成")) return "bg-secondary-green/10 text-secondary-green";
@@ -1291,7 +1310,7 @@
           const displayPm = t.projectManager || proj?.manager || "";
           if(editingId === t.id){
             return `
-              <div class="project-card bg-white p-4 rounded-xl shadow">
+              <div class="project-card bg白 p-4 rounded-xl shadow">
                 <div class="flex items-start justify-between">
                   <div class="text-sm text-gray-500">${escapeHtml(t.projectId||"")} ${proj?`- ${escapeHtml(proj.title||"")}`:""}</div>
                   <div class="text-xs text-gray-400">${escapeHtml(t.createdAt?.toDate? t.createdAt.toDate().toLocaleString() : "")}</div>
@@ -1323,14 +1342,14 @@
                   </div>
                 </div>
                 <div class="mt-3 flex gap-3">
-                  <button class="px-3 py-1.5 rounded-md bg-secondary-green text-white" onclick="window.__saveTask('${t.id}')">儲存</button>
+                  <button class="px-3 py-1.5 rounded-md bg-secondary-green text白" onclick="window.__saveTask('${t.id}')">儲存</button>
                   <button class="px-3 py-1.5 rounded-md bg-gray-200 text-gray-700" onclick="window.__cancelEditTask()">取消</button>
                 </div>
               </div>
             `;
           } else {
             return `
-              <div class="project-card bg-white p-4 rounded-xl shadow">
+              <div class="project-card bg白 p-4 rounded-xl shadow">
                 <div class="flex items-start justify-between">
                   <div class="text-sm text-primary-blue font-semibold">${escapeHtml(t.taskName||"任務")}</div>
                   <div class="text-xs text-gray-400">${escapeHtml(t.createdAt?.toDate? t.createdAt.toDate().toLocaleString() : "")}</div>
@@ -1460,36 +1479,327 @@
       triggerDownloadCsv(csv, `project_${p.id}.csv`);
     };
 
-    // ---- 資訊交流（圖片/文章/文字/連結 + 刪除按鈕） ----
+    // 專案詳情（新增：可編輯、檔案上傳/刪除、下載 CSV、追蹤）
+    window.__showEditProjectForm = function(projectId){ editingProjectId = projectId; renderProjectDetails(projectId); };
+    window.__cancelEditProject = function(){ editingProjectId = null; renderProjectDetails(selectedProjectId); };
+    window.__saveProject = async function(projectId){
+      if(!isAuthorized()){ showModal("未登入","請先登入再更新專案。"); return; }
+      const title = (document.getElementById("edit-title")?.value || "").trim();
+      const managerSel = document.getElementById("edit-manager")?.value || "";
+      const managerNew = (document.getElementById("edit-manager-new")?.value || "").trim();
+      const manager = managerNew || managerSel;
 
-    // 嘗試從 Firebase Storage 公開 URL 解析出檔案路徑（/o/<path>?...）
-    function tryGetStoragePathFromUrl(url){
+      const personnelBudget = n(document.getElementById("edit-personnel")?.value);
+      const operatingBudget = n(document.getElementById("edit-operating")?.value);
+      const equipmentBudget = n(document.getElementById("edit-equipment")?.value);
+      const budget = personnelBudget + operatingBudget + equipmentBudget;
+      let progress = n(document.getElementById("edit-progress")?.value);
+      progress = Math.max(0, Math.min(100, progress));
+      const status = (document.getElementById("edit-status")?.value || "").trim();
+
       try{
-        if(!url) return "";
-        const m = String(url).match(/\/o\/([^?]+)/);
-        if(!m) return "";
-        return decodeURIComponent(m[1]); // e.g. community_uploads/uid/123_file.png
-      }catch{ return ""; }
+        if(managerNew){
+          const exists = managers.some(m => (m.name||"") === managerNew);
+          if(!exists){
+            await addDoc(collection(db, MANAGERS_COLLECTION_PATH), {
+              name: managerNew, email:"", title:"",
+              createdAt: serverTimestamp(), reporterId: currentUserId
+            });
+          }
+        }
+        await updateDoc(doc(db, PROJECTS_COLLECTION_PATH, projectId), {
+          ...(title ? { title } : {}),
+          ...(manager ? { manager } : {}),
+          personnelBudget, operatingBudget, equipmentBudget,
+          budget, progress, status
+        });
+        showModal("已更新","專案資料已更新。");
+        editingProjectId = null;
+        renderProjectDetails(projectId);
+      }catch(e){
+        console.error(e);
+        showModal("更新失敗", e?.message || "更新專案時發生錯誤。");
+      }
+    };
+
+    window.__uploadProjectFile = async function(projectId){
+      if(!isAuthorized()){ showModal("未登入","請先登入再上傳檔案。"); return; }
+      const input = document.getElementById(`file-input-${projectId}`);
+      const feedback = document.getElementById("file-feedback");
+      if(!input?.files?.length){ if(feedback){ feedback.className="text-sm text-red-600"; feedback.textContent="請選擇檔案"; } return; }
+      const file = input.files[0];
+      const path = `project_uploads/${projectId}/${Date.now()}_${file.name}`;
+      try{
+        if(feedback){ feedback.className="text-sm text-gray-600"; feedback.textContent="上傳中..."; }
+        const ref = sRef(storage, path);
+        await new Promise((resolve, reject)=>{
+          const task = uploadBytesResumable(ref, file);
+          task.on('state_changed', ()=>{}, reject, resolve);
+        });
+        const url = await getDownloadURL(ref);
+        await addDoc(collection(db, FILES_COLLECTION_PATH), {
+          projectId, fileName: file.name, url,
+          uploadedAt: serverTimestamp(), uploadedBy: currentUserId
+        });
+        if(feedback){ feedback.className="text-sm text-secondary-green"; feedback.textContent="上傳完成"; }
+        input.value = "";
+      }catch(e){
+        console.error(e);
+        if(feedback){ feedback.className="text-sm text-red-600"; feedback.textContent="上傳失敗"; }
+      }
+    };
+
+    window.__deleteProjectFile = async function(fileId, url){
+      if(!isAuthorized()){ showModal("未登入","請先登入再刪除檔案。"); return; }
+      if(!confirm("確定刪除此檔案紀錄？（若為本系統上傳，將嘗試刪除實體檔案）")) return;
+      try{
+        // 刪 Firestore 紀錄
+        await deleteDoc(doc(db, FILES_COLLECTION_PATH, fileId));
+        // 嘗試刪 Storage 檔案
+        const path = tryGetStoragePathFromUrl(url);
+        if(path){ try{ await deleteObject(sRef(storage, path)); }catch(e){ console.warn("刪檔失敗或無權限：", e); } }
+        showModal("已刪除","檔案紀錄已刪除。");
+      }catch(e){
+        console.error(e);
+        showModal("刪除失敗", e?.message || "刪除檔案時發生錯誤。");
+      }
+    };
+
+    function renderProjectDetails(projectId){
+      const c = document.getElementById("main-content");
+      if(!c) return;
+      const p = projects.find(x=>x.id===projectId);
+      if(!p){
+        c.innerHTML = `<p class="text-gray-500">找不到該專案。</p>`;
+        return;
+      }
+
+      const projectTasks = tasks.filter(t => t.projectId===projectId).slice(0,20);
+      const projectEvents = events.filter(e => e.projectId===projectId).slice(0,20);
+      const projectFiles = files.filter(f => f.projectId===projectId).slice(0,50);
+
+      let watchersCount = 0;
+      let userFollowing = false;
+      if(detailsWatchersUnsub){ try{ detailsWatchersUnsub(); }catch{} detailsWatchersUnsub = null; }
+      detailsWatchersUnsub = onSnapshot(
+        query(collection(db, WATCHERS_COLLECTION_PATH), where("projectId","==", projectId)),
+        (snap)=>{
+          watchersCount = snap.size;
+          userFollowing = snap.docs.some(d => (d.data().userId||"") === currentUserId);
+          const indicator = document.getElementById("follow-indicator");
+          const btn = document.getElementById("btn-follow-project");
+          if(indicator) indicator.textContent = `追蹤者：${watchersCount} 人${userFollowing?"（你已追蹤）":""}`;
+          if(btn) btn.textContent = userFollowing ? "取消追蹤" : "追蹤此專案";
+        }
+      );
+
+      const isEditing = editingProjectId === projectId;
+
+      c.innerHTML = `
+        <h2 class="text-3xl font-bold text-gray-800 mb-6 border-b pb-2 flex items-center">
+          <i data-lucide="layout-dashboard" class="w-7 h-7 mr-3 text-primary-blue"></i> 專案詳情
+        </h2>
+
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div class="lg:col-span-2 project-card bg白 p-6 rounded-xl shadow">
+            <div class="flex items-start justify-between">
+              <div>
+                <div class="text-lg font-semibold text-primary-blue">${escapeHtml(p.title||"")}</div>
+                <div class="text-sm text-gray-500 mt-1">編號：${escapeHtml(p.id||"")}</div>
+              </div>
+              <div class="text-right">
+                <div id="follow-indicator" class="text-sm text-gray-600">追蹤者：-- 人</div>
+                <div class="mt-2 flex gap-2 justify-end">
+                  <button id="btn-follow-project"
+                          class="px-3 py-1.5 text-sm rounded-md bg-primary-blue text白 hover:bg-blue-700"
+                          onclick="toggleFollowProject('${escapeHtml(projectId)}')">
+                    追蹤此專案
+                  </button>
+                  <button class="px-3 py-1.5 text-sm rounded-md bg-amber-100 text-amber-700 hover:bg-amber-200"
+                          onclick="__showEditProjectForm('${escapeHtml(projectId)}')">
+                    ${isEditing? "編輯中" : "編輯專案"}
+                  </button>
+                  <button id="btn-export-project"
+                          class="px-3 py-1.5 text-sm rounded-md bg-gray-100 text-gray-700 hover:bg-gray-200"
+                          onclick="exportProjectCsv('${escapeHtml(projectId)}')">
+                    下載專案 CSV
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <!-- 概要區 -->
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4 text-sm">
+              <div><div class="text-gray-500">主持人</div><div class="font-medium">${escapeHtml(p.manager||"")}</div></div>
+              <div><div class="text-gray-500">進度</div><div class="font-medium">${n(p.progress)}%</div></div>
+              <div><div class="text-gray-500">狀態</div><div class="font-medium">${escapeHtml(p.status||"")}</div></div>
+              <div><div class="text-gray-500">預算概算</div><div class="font-medium">${fmtMoney(n(p.budget))}</div></div>
+            </div>
+
+            <!-- 編輯表單 -->
+            ${ isEditing ? `
+              <div class="mt-6 border rounded-lg p-4 bg-gray-50">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label class="block text-xs text-gray-600">專案名稱</label>
+                    <input id="edit-title" type="text" class="w-full rounded-md border-gray-300 p-2 border" value="${escapeHtml(p.title||"")}">
+                  </div>
+                  <div>
+                    <label class="block text-xs text-gray-600">主持人</label>
+                    <select id="edit-manager" class="w-full rounded-md border-gray-300 p-2 border">
+                      ${managerOptionsHtml(p.manager||"")}
+                    </select>
+                    <label class="block text-[11px] text-gray-500 mt-1">或新增主持人</label>
+                    <input id="edit-manager-new" type="text" class="w-full rounded-md border-gray-300 p-2 border" placeholder="輸入新主持人（選填）">
+                  </div>
+                  <div>
+                    <label class="block text-xs text-gray-600">人事費 (NTD)</label>
+                    <input id="edit-personnel" type="number" class="w-full rounded-md border-gray-300 p-2 border" value="${n(p.personnelBudget)||0}">
+                  </div>
+                  <div>
+                    <label class="block text-xs text-gray-600">業務費 (NTD)</label>
+                    <input id="edit-operating" type="number" class="w-full rounded-md border-gray-300 p-2 border" value="${n(p.operatingBudget)||0}">
+                  </div>
+                  <div>
+                    <label class="block text-xs text-gray-600">設備費 (NTD)</label>
+                    <input id="edit-equipment" type="number" class="w-full rounded-md border-gray-300 p-2 border" value="${n(p.equipmentBudget)||0}">
+                  </div>
+                  <div>
+                    <label class="block text-xs text-gray-600">進度 (%)</label>
+                    <input id="edit-progress" type="number" min="0" max="100" class="w-full rounded-md border-gray-300 p-2 border" value="${n(p.progress)||0}">
+                  </div>
+                  <div class="md:col-span-2">
+                    <label class="block text-xs text-gray-600">狀態</label>
+                    <input id="edit-status" type="text" class="w-full rounded-md border-gray-300 p-2 border" value="${escapeHtml(p.status||"")}">
+                  </div>
+                </div>
+                <div class="mt-3 flex gap-2">
+                  <button class="px-3 py-1.5 rounded-md bg-secondary-green text白" onclick="__saveProject('${escapeHtml(projectId)}')">儲存</button>
+                  <button class="px-3 py-1.5 rounded-md bg-gray-200 text-gray-700" onclick="__cancelEditProject()">取消</button>
+                </div>
+              </div>
+            ` : ``}
+
+            <!-- 任務清單 -->
+            <div class="mt-6">
+              <div class="text-sm text-gray-500 mb-2">近期任務（最多 20 筆）</div>
+              <div class="border rounded-lg overflow-hidden">
+                <table class="min-w-full">
+                  <thead class="bg-gray-50">
+                    <tr>
+                      <th class="px-3 py-2 text-left text-xs text-gray-500 uppercase">任務</th>
+                      <th class="px-3 py-2 text-left text-xs text-gray-500 uppercase">負責人</th>
+                      <th class="px-3 py-2 text-left text-xs text-gray-500 uppercase">主持人</th>
+                      <th class="px-3 py-2 text-left text-xs text-gray-500 uppercase">到期</th>
+                      <th class="px-3 py-2 text-left text-xs text-gray-500 uppercase">狀態</th>
+                    </tr>
+                  </thead>
+                  <tbody class="divide-y divide-gray-200 bg白">
+                    ${
+                      projectTasks.length ? projectTasks.map(t=>{
+                        const pm = t.projectManager || p.manager || "";
+                        return `
+                          <tr>
+                            <td class="px-3 py-2 text-sm">
+                              <div class="font-medium">${escapeHtml(t.taskName||"")}</div>
+                              ${t.description? `<div class="text-xs text-gray-500">${escapeHtml(t.description)}</div>`:""}
+                            </td>
+                            <td class="px-3 py-2 text-sm">${escapeHtml(t.assignee||"")}</td>
+                            <td class="px-3 py-2 text-sm">${escapeHtml(pm)}</td>
+                            <td class="px-3 py-2 text-sm">${escapeHtml(t.dueDate||"")}</td>
+                            <td class="px-3 py-2 text-sm">${escapeHtml(t.status||"")}</td>
+                          </tr>
+                        `;
+                      }).join("") : `<tr><td class="px-3 py-4 text-center text-gray-500 text-sm" colspan="5">此專案尚無任務</td></tr>`
+                    }
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <!-- 行事清單 -->
+            <div class="mt-6">
+              <div class="text-sm text-gray-500 mb-2">近期行事（最多 20 筆）</div>
+              <div class="border rounded-lg overflow-hidden">
+                <table class="min-w-full">
+                  <thead class="bg-gray-50">
+                    <tr>
+                      <th class="px-3 py-2 text-left text-xs text-gray-500 uppercase">標題</th>
+                      <th class="px-3 py-2 text-left text-xs text-gray-500 uppercase">日期</th>
+                      <th class="px-3 py-2 text-left text-xs text-gray-500 uppercase">負責人</th>
+                    </tr>
+                  </thead>
+                  <tbody class="divide-y divide-gray-200 bg白">
+                    ${
+                      projectEvents.length ? projectEvents.map(ev=>`
+                        <tr>
+                          <td class="px-3 py-2 text-sm">${escapeHtml(ev.title||"事件")}</td>
+                          <td class="px-3 py-2 text-sm">${escapeHtml(ev.startDate||"")} ${ev.endDate && ev.endDate!==ev.startDate ? `~ ${escapeHtml(ev.endDate)}`:""}</td>
+                          <td class="px-3 py-2 text-sm">${escapeHtml(ev.assignee||"")}</td>
+                        </tr>
+                      `).join("") : `<tr><td class="px-3 py-4 text-center text-gray-500 text-sm" colspan="3">此專案尚無行事</td></tr>`
+                    }
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+          <!-- 右側：檔案上傳與清單 -->
+          <div class="lg:col-span-1 project-card bg白 p-6 rounded-xl shadow">
+            <h3 class="text-lg font-semibold text-gray-800 mb-3 flex items-center">
+              <i data-lucide="paperclip" class="w-5 h-5 mr-2 text-primary-blue"></i> 專案檔案
+            </h3>
+
+            <div class="border rounded-lg p-3 bg-gray-50">
+              <input id="file-input-${escapeHtml(projectId)}" type="file" class="w-full text-sm">
+              <button class="mt-2 w-full py-2 bg-primary-blue text白 rounded-lg hover:bg-blue-700"
+                      onclick="__uploadProjectFile('${escapeHtml(projectId)}')">
+                上傳
+              </button>
+              <div id="file-feedback" class="text-sm mt-2"></div>
+            </div>
+
+            <div class="mt-4 space-y-2 max-h-[420px] overflow-auto">
+              ${
+                projectFiles.length ? projectFiles.map(f=>`
+                  <div class="border rounded-md p-2">
+                    <div class="flex items-start justify-between gap-2">
+                      <div class="min-w-0">
+                        <div class="text-sm font-medium truncate" title="${escapeHtml(f.fileName||"檔案")}">${escapeHtml(f.fileName||"檔案")}</div>
+                        <div class="text-xs text-gray-500">${isoToLocale(f.uploadedAt?.toDate ? f.uploadedAt.toDate().toISOString() : f.uploadedAt || "")}</div>
+                        ${f.url ? `<a class="text-xs text-primary-blue hover:underline break-all" href="${escapeHtml(f.url)}" target="_blank" rel="noopener">下載/查看</a>` : ""}
+                      </div>
+                      <div class="flex-shrink-0">
+                        <button class="text-xs px-2 py-1 rounded bg-red-50 text-red-600 hover:bg-red-100"
+                                onclick="__deleteProjectFile('${escapeHtml(f.id)}','${escapeHtml(f.url||"")}')">
+                          刪除
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                `).join("") : `<div class="text-sm text-gray-500">尚無檔案</div>`
+              }
+            </div>
+          </div>
+        </div>
+      `;
+      if(window.lucide?.createIcons) lucide.createIcons();
     }
 
-    // 刪除貼文（含圖片檔案（若有））
+    // ---- 資訊交流（圖片/文章/文字/連結 + 刪除按鈕） ----
     window.__deletePost = async function(postId, imageUrl){
       if(!isAuthorized()){ showModal("未登入","請先登入再刪除貼文。"); return; }
       if(!confirm("確定要刪除此貼文？此動作無法復原。")) return;
       try{
-        // 刪 Firestore 貼文
         await deleteDoc(doc(db, COMMUNITY_COLLECTION_PATH, postId));
-
-        // 若有圖片嘗試刪 Storage 檔案
         if(imageUrl){
           const path = tryGetStoragePathFromUrl(imageUrl);
           if(path){
             try{ await deleteObject(sRef(storage, path)); }catch(e){ console.warn("刪除圖片失敗：", e); }
           }
         }
-
         showModal("已刪除","貼文已刪除。");
-        // onSnapshot 會自動更新列表
       }catch(e){
         console.error(e);
         showModal("刪除失敗", e?.message || "執行刪除時發生錯誤。");
@@ -1515,7 +1825,7 @@
         const when = p.createdAt?.toDate ? p.createdAt.toDate().toLocaleString() : (p.createdAt || "");
         const canDelete = (p.reporterId && p.reporterId === currentUserId);
         return `
-          <div class="project-card bg-white p-4 rounded-xl shadow">
+          <div class="project-card bg白 p-4 rounded-xl shadow">
             <div class="flex items-start justify-between">
               <div class="flex items-center gap-3">
                 <div class="w-9 h-9 rounded-full bg-gray-200 overflow-hidden flex-shrink-0">
@@ -1554,7 +1864,7 @@
           <i data-lucide="messages-square" class="w-7 h-7 mr-3 text-primary-blue"></i> 資訊交流
         </h2>
 
-        <div class="project-card bg-white p-6 rounded-xl shadow mb-6">
+        <div class="project-card bg白 p-6 rounded-xl shadow mb-6">
           <h3 class="text-lg font-semibold text-gray-800 mb-3">分享內容</h3>
           <form id="post-form" class="space-y-3">
             <div>
@@ -1588,7 +1898,7 @@
             </div>
 
             <div class="flex justify-end">
-              <button type="submit" class="px-4 py-2 bg-primary-blue text-white rounded-lg hover:bg-blue-700">發佈</button>
+              <button type="submit" class="px-4 py-2 bg-primary-blue text白 rounded-lg hover:bg-blue-700">發佈</button>
             </div>
             <div id="post-feedback" class="text-sm"></div>
           </form>

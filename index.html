@@ -12,6 +12,7 @@
                               https://firestore.googleapis.com
                               https://identitytoolkit.googleapis.com
                               https://securetoken.googleapis.com
+                              https://firebaseinstallations.googleapis.com
                               https://www.googleapis.com
                               https://*.googleapis.com
                               https://apis.google.com
@@ -35,12 +36,12 @@
   <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/index.global.min.js"></script>
 
   <script>
-    // Firebase/基本設定（請確認這些值正確）
+    // Firebase/基本設定
     window.__firebase_config_object = {
       apiKey: "AIzaSyCIXWS0ynK4GdsdQIXkOs3fHuzAendZ7LA",
       authDomain: "taiwanplan-f7566.firebaseapp.com",
       projectId: "taiwanplan-f7566",
-      storageBucket: "taiwanplan-f7566.firebasestorage.app",
+      storageBucket: "taiwanplan-f7566.appspot.com", // 修正為 appspot.com
       messagingSenderId: "874700126533",
       appId: "1:874700126533:web:5461432d0169b7de6ee62c"
     };
@@ -250,7 +251,7 @@
     // 專案詳情主持人篩選狀態
     let detailsFilterPM = "";
 
-    // 工具
+    // 小工具
     function escapeHtml(str){
       if(str==null) return "";
       return String(str).replace(/&/g,"&amp;").replace(/</g,"&lt;")
@@ -328,7 +329,7 @@
       }catch(e){ console.warn("SharePoint backup failed:", e); }
     }
 
-    // AI 摘要（Brain）— 略（保留原功能）
+    // AI 摘要（Brain）
     async function generateAIReport(mode){
       const url = AI_SUMMARY_WEBAPP_URL;
       if(!url || /REPLACE/.test(url)) { showModal("未設定 AI 端點", "請先部署 AI Web App URL 後再使用。"); return; }
@@ -404,6 +405,31 @@
           currentUserId = ""; userProfile = { displayName:"", email:"", photoURL:"" }; showLanding();
         }
       });
+
+      // 診斷工具（於 Console 呼叫）
+      window.__debugTestWrite = async () => {
+        try {
+          const id = String(Date.now());
+          const ref = doc(db, `artifacts/${APP_ID}/public/debug/test_writes`, id);
+          await setDoc(ref, { ok: true, at: serverTimestamp(), uid: currentUserId || null });
+          console.log("[debugTestWrite] OK:", ref.path);
+          alert("寫入成功：" + ref.path);
+        } catch (e) {
+          console.error("[debugTestWrite] FAIL:", e);
+          alert("寫入失敗：" + (e?.message || String(e)));
+        }
+      };
+      window.__debugTestStorage = async ()=>{
+        try{
+          if(!currentUserId) throw new Error("未登入");
+          const blob = new Blob(["hello"], {type:"text/plain"});
+          const f = new File([blob], "debug.txt", {type:"text/plain"});
+          const url = await uploadImageAndGetUrl(f);
+          alert("Storage OK，URL = " + url);
+        }catch(e){
+          alert("Storage 測試失敗：" + (e?.message || String(e)));
+        }
+      };
     }
 
     // 登入/註冊
@@ -613,7 +639,6 @@
 
       let personnelUsed = 0, operatingUsed = 0, equipmentUsed = 0;
       for(const p of projects){
-        // 若有 Used 欄位就用 Used，否則用 Budget（兼容舊資料）
         const pu = ('personnelUsed' in p) ? n(p.personnelUsed) : 0;
         const ou = ('operatingUsed' in p) ? n(p.operatingUsed) : 0;
         const eu = ('equipmentUsed' in p) ? n(p.equipmentUsed) : 0;
@@ -765,7 +790,12 @@
       const feedback = document.getElementById("project-form-feedback");
       feedback.className = "text-sm";
       feedback.textContent = "";
-      if(!currentUserId){ feedback.className="text-sm text-red-600"; feedback.textContent="請先登入後再新增專案。"; showModal("請先登入","請先登入後再新增專案。"); return; }
+      if(!currentUserId){
+        feedback.className="text-sm text-red-600";
+        feedback.textContent="請先登入後再新增專案。";
+        showModal("請先登入","請先登入後再新增專案。");
+        return;
+      }
 
       const projectId = document.getElementById("proj-id").value.trim();
       const title = document.getElementById("proj-title").value.trim();
@@ -793,7 +823,7 @@
       }
 
       try{
-        // 首次輸入的新主持人自動加入人員清單
+        // 新主持人自動加入名單
         if(typedManager){
           const exists = managers.some(m => (m.name||"") === typedManager);
           if(!exists){
@@ -806,18 +836,18 @@
         const payload = {
           id: projectId, title, manager,
           budget, personnelBudget, operatingBudget, equipmentBudget,
-          // 新增可更新的使用金額欄位，預設 0
           personnelUsed: 0, operatingUsed: 0, equipmentUsed: 0,
-          // 需求設定
           needIT, requiredRoles,
           progress, status, proposer: manager, manpower: 0, type:"手動輸入",
           createdAt: serverTimestamp(), reporterId: currentUserId
         };
 
-        await setDoc(doc(db, PROJECTS_COLLECTION_PATH, projectId), payload);
+        const target = doc(db, PROJECTS_COLLECTION_PATH, projectId);
+        await setDoc(target, payload);
+        console.log("[createProject] setDoc OK:", target.path, payload);
 
-        // 回讀驗證（避免你感覺「沒寫入」）
-        const check = await getDoc(doc(db, PROJECTS_COLLECTION_PATH, projectId));
+        // 回讀驗證
+        const check = await getDoc(target);
         if(!check.exists()){
           throw new Error("寫入後驗證失敗：資料庫未讀到新專案。請檢查 Firestore 規則或網路。");
         }
@@ -831,9 +861,10 @@
         document.getElementById("proj-budget").value = 0;
 
       }catch(err){
-        console.error(err);
+        console.error("[createProject] ERROR:", err);
+        const msg = (err?.code ? `[${err.code}] ` : "") + (err?.message || String(err));
         feedback.className="mt-2 text-sm text-red-600";
-        feedback.textContent = `專案新增失敗：${err?.message || String(err)}（若持續發生，請到 Firebase Console 檢查 Firestore 規則權限）`;
+        feedback.textContent = `專案新增失敗：${msg}。請開啟 Console/Network 截圖錯誤給我。`;
       }
     }
 
@@ -1076,7 +1107,7 @@
       const statusOptions = ['全部狀態', ...Array.from(statusSet).filter(Boolean)];
 
       c.innerHTML = `
-        <h2 class="text-3xl font-bold text-gray-800 mb-6 border-b pb-2 flex items-center">
+        <h2 class="text-3xl font-bold text-gray-800 mb-6 border-b pb-2 flex items中心">
           <i data-lucide="calendar-days" class="w-7 h-7 mr-3 text-primary-blue"></i> Planner（任務管理）
         </h2>
 
@@ -1116,7 +1147,7 @@
               <textarea id="task-desc" rows="2" class="mt-1 w-full rounded-md border-gray-300 p-2 border" placeholder="任務描述（選填）"></textarea>
             </div>
             <div class="md:col-span-6 flex justify-end">
-              <button type="submit" class="px-4 py-2 bg-primary-blue text-white rounded-lg hover:bg-blue-700">新增</button>
+              <button type="submit" class="px-4 py-2 bg-primary-blue text白 rounded-lg hover:bg-blue-700">新增</button>
             </div>
             <div id="task-form-feedback" class="text-sm md:col-span-6"></div>
           </form>
@@ -1408,7 +1439,7 @@
       triggerDownloadCsv(csv, `project_${p.id}.csv`);
     };
 
-    // 專案詳情（金額/人力可更新 + 主持人/專案對應篩選）
+    // 專案詳情（可更新金額與人力 + 主持人/專案對應篩選）
     function renderProjectDetails(projectId){
       const c = document.getElementById("main-content"); if(!c) return;
 
@@ -1705,7 +1736,6 @@
             needIT, requiredRoles, budget
           });
           feedback.className = "text-sm text-green-600"; feedback.textContent = "已更新。";
-          // 重新渲染，更新進度條
           renderProjectDetails(selectedProjectId);
         }catch(err){
           console.error(err);
@@ -1737,16 +1767,40 @@
         console.error(e); showModal("刪除失敗", e?.message || "執行刪除時發生錯誤。");
       }
     };
+
     async function uploadImageAndGetUrl(file){
-      if(!file) return "";
-      const path = `community_uploads/${currentUserId || 'anonymous'}/${Date.now()}_${file.name}`;
+      if(!file) throw new Error("未選擇檔案");
+      const safeName = encodeURIComponent(file.name.replace(/\s+/g,'_'));
+      const path = `community_uploads/${currentUserId || 'anonymous'}/${Date.now()}_${safeName}`;
       const ref = sRef(storage, path);
-      await new Promise((resolve, reject)=>{
-        const task = uploadBytesResumable(ref, file);
-        task.on('state_changed', ()=>{}, reject, resolve);
+      const meta = { contentType: file.type || 'application/octet-stream' };
+
+      return await new Promise((resolve, reject)=>{
+        const fb = document.getElementById("post-feedback");
+        const task = uploadBytesResumable(ref, file, meta);
+
+        task.on('state_changed',
+          (snap)=>{
+            const pct = snap.totalBytes ? Math.round(snap.bytesTransferred*100/snap.totalBytes) : 0;
+            if (fb) { fb.className="text-sm text-gray-600"; fb.textContent = `圖片上傳中… ${pct}%`; }
+          },
+          (err)=>{
+            console.error("[uploadImageAndGetUrl] failed:", err);
+            reject(err);
+          },
+          async ()=>{
+            try{
+              const url = await getDownloadURL(ref);
+              resolve(url);
+            }catch(e){
+              console.error("[uploadImageAndGetUrl] getDownloadURL failed:", e);
+              reject(e);
+            }
+          }
+        );
       });
-      return await getDownloadURL(ref);
     }
+
     function renderPostCards(list){
       if(!list || !list.length) return `<div class="text-sm text-gray-500">目前沒有貼文，搶先分享第一則！</div>`;
       return list.map(p=>{
@@ -1758,7 +1812,7 @@
               <div class="flex items-center gap-3">
                 <div class="w-9 h-9 rounded-full bg-gray-200 overflow-hidden flex-shrink-0">
                   ${ p.authorPhotoURL ? `<img src="${escapeHtml(p.authorPhotoURL)}" class="w-full h-full object-cover">`
-                                      : `<div class="w-full h-full flex items-center justify-center text-black/70 font-bold text-xs">${escapeHtml((p.authorName||'U').charAt(0).toUpperCase())}</div>` }
+                                      : `<div class="w-full h-full flex items-center justify-center text黑/70 font-bold text-xs">${escapeHtml((p.authorName||'U').charAt(0).toUpperCase())}</div>` }
                 </div>
                 <div class="min-w-0">
                   <div class="text-sm font-semibold">${escapeHtml(p.authorName||"使用者")}</div>
@@ -1843,34 +1897,46 @@
       document.getElementById("post-form")?.addEventListener("submit", async (e)=>{
         e.preventDefault();
         const feedback = document.getElementById("post-feedback");
-        if(!currentUserId){ feedback.className="text-sm text-red-600"; feedback.textContent="請先登入再發佈。"; return; }
-        const postType = document.getElementById("post-type").value;
-        const title = document.getElementById("post-title").value.trim();
-        const url = document.getElementById("post-url").value.trim();
-        const text = document.getElementById("post-text").value.trim();
-        const imageFile = document.getElementById("post-image").files?.[0];
+        const type = document.getElementById("post-type").value;
+        const title = (document.getElementById("post-title")?.value || "").trim();
+        const url   = (document.getElementById("post-url")?.value || "").trim();
+        const text  = (document.getElementById("post-text")?.value || "").trim();
+        const file  = document.getElementById("post-image")?.files?.[0];
+
+        if(!currentUserId){
+          if (feedback){ feedback.className="text-sm text-red-600"; feedback.textContent="請先登入再發佈。"; }
+          return;
+        }
+
         try{
-          feedback.className="text-sm text-gray-600"; feedback.textContent="上傳中...";
           let imageUrl = "";
-          if(postType==="image" && imageFile) imageUrl = await uploadImageAndGetUrl(imageFile);
+          if(type === "link" && !url) throw new Error("請輸入連結網址");
+          if(type === "image"){
+            if(!file) throw new Error("請選擇圖片檔案");
+            imageUrl = await uploadImageAndGetUrl(file);
+          }
+          if(!text && type!=="image" && type!=="link") throw new Error("請輸入內容");
+
           const payload = {
-            postType, title, url, text, imageUrl,
+            postType: type, title, url, text, imageUrl,
             authorName: userProfile.displayName || userProfile.email || "使用者",
             authorEmail: userProfile.email || "",
             authorPhotoURL: userProfile.photoURL || "",
-            createdAt: serverTimestamp(), reporterId: currentUserId
+            createdAt: serverTimestamp(),
+            reporterId: currentUserId
           };
-          if(postType==="link" && !url){ feedback.className="text-sm text-red-600"; feedback.textContent="請輸入連結網址。"; return; }
-          if(postType==="image" && !imageUrl){ feedback.className="text-sm text-red-600"; feedback.textContent="請選擇圖片檔案。"; return; }
-          if(postType==="article" && !title){ feedback.className="text-sm text-red-600"; feedback.textContent="請輸入文章標題。"; return; }
-          if(!text && postType!=="image" && postType!=="link"){ feedback.className="text-sm text-red-600"; feedback.textContent="請輸入內容。"; return; }
-          await addDoc(collection(db, COMMUNITY_COLLECTION_PATH), payload);
-          feedback.className="text-sm text-secondary-green"; feedback.textContent="發佈成功！";
+
+          if (feedback){ feedback.className="text-sm text-gray-600"; feedback.textContent="發佈中…"; }
+          const ref = await addDoc(collection(db, COMMUNITY_COLLECTION_PATH), payload);
+          console.log("[community] created:", ref.id, payload);
+
+          if (feedback){ feedback.className="text-sm text-green-600"; feedback.textContent="發佈成功！"; }
           (document.getElementById("post-form"))?.reset();
           updateFields();
+
         }catch(err){
-          console.error(err);
-          feedback.className="text-sm text-red-600"; feedback.textContent="發佈失敗：上傳或資料庫錯誤。";
+          console.error("[community] create failed:", err);
+          if (feedback){ feedback.className="text-sm text-red-600"; feedback.textContent = `發佈失敗：${err?.message || String(err)}`; }
         }
       });
 

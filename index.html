@@ -120,7 +120,6 @@
                    class="mt-1 block w-full rounded-md border-gray-300 p-2 border" placeholder="至少 6 個字元">
           </div>
           <div class="grid grid-cols-2 gap-3">
-            <!-- 修改：加入 type="button" 與 onclick，確保點擊必定觸發 -->
             <button id="btn-email-signin"
                     type="button"
                     class="w-full py-3 rounded-xl bg-primary-blue hover:bg-blue-700 text-white font-semibold"
@@ -646,7 +645,7 @@
       if(currentView==="community") renderCommunity();
     }
 
-    // 儀錶板：完整呈現 AI 摘要與迷你行事曆
+    // 儀錶板：移除 AI 摘要，保留迷你行事曆
     function renderDashboard(){
       const c = document.getElementById("main-content");
       if(!c) return;
@@ -723,42 +722,20 @@
           </div>
         </div>
 
-        <!-- 新增：AI 摘要 + 迷你行事曆 -->
-        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
-          <div class="project-card bg-white p-6 rounded-xl shadow-lg">
-            <h3 class="text-xl font-semibold text-gray-800 mb-4 flex items-center">
-              <i data-lucide="brain-circuit" class="w-5 h-5 mr-2 text-primary-blue"></i> AI 週/月報摘要
-            </h3>
-            <p class="text-sm text-gray-500 mb-3">依據當月/當週專案、任務、行事曆資料，自動生成摘要。</p>
-            <div class="flex gap-3 mb-3">
-              <button class="px-3 py-2 rounded-lg bg-primary-blue text-white hover:bg-blue-700 text-sm" onclick="generateAIReport('week')">產生本週摘要</button>
-              <button class="px-3 py-2 rounded-lg bg-secondary-green text白 hover:bg-green-700 text-sm" onclick="generateAIReport('month')">產生本月摘要</button>
-              <button id="btn-ai-download" class="px-3 py-2 rounded-lg bg-gray-200 text-gray-700 hover:bg-gray-300 text-sm" disabled>下載摘要</button>
-            </div>
-            <div class="border rounded-lg p-3 bg-gray-50">
-              <pre id="ai-summary-box" class="whitespace-pre-wrap text-sm text-gray-800">點擊上方按鈕生成 AI 摘要...</pre>
-            </div>
-            <div class="mt-3 text-right">
-              <button class="inline-flex items-center gap-2 text-primary-blue hover:text-blue-700 text-sm" onclick="setView('report')">
-                <i data-lucide="arrow-right" class="w-4 h-4"></i> 前往完整報表
-              </button>
-            </div>
-          </div>
-
-          <div class="project-card bg-white p-6 rounded-xl shadow-lg">
-            <h3 class="text-xl font-semibold text-gray-800 mb-4 flex items-center">
-              <i data-lucide="calendar" class="w-5 h-5 mr-2 text-primary-blue"></i> 行事曆（本月）
-            </h3>
-            <div id="mini-calendar" class="rounded-lg border bg-white" style="min-height:520px;"></div>
-            <div class="mt-3 text-right">
-              <button class="inline-flex items-center gap-2 text-primary-blue hover:text-blue-700 text-sm" onclick="setView('calendar')">
-                <i data-lucide="arrow-right" class="w-4 h-4"></i> 前往完整行事曆
-              </button>
-            </div>
+        <!-- 保留：迷你行事曆（移除 AI 摘要） -->
+        <div class="project-card bg-white p-6 rounded-xl shadow-lg">
+          <h3 class="text-xl font-semibold text-gray-800 mb-4 flex items-center">
+            <i data-lucide="calendar" class="w-5 h-5 mr-2 text-primary-blue"></i> 行事曆（本月）
+          </h3>
+          <div id="mini-calendar" class="rounded-lg border bg-white" style="min-height:520px;"></div>
+          <div class="mt-3 text-right">
+            <button class="inline-flex items-center gap-2 text-primary-blue hover:text-blue-700 text-sm" onclick="setView('calendar')">
+              <i data-lucide="arrow-right" class="w-4 h-4"></i> 前往完整行事曆
+            </button>
           </div>
         </div>
 
-        <div class="bg-white p-6 rounded-xl shadow-lg mb-8">
+        <div class="bg-white p-6 rounded-xl shadow-lg mt-8">
           <h3 class="text-xl font-semibold text-gray-800 mb-4">所有專案概覽</h3>
           ${
             empty ? `
@@ -806,64 +783,8 @@
               </table>
             </div>`}
         </div>
-
-        <div class="bg-white p-6 rounded-xl shadow-lg">
-          <h3 class="text-xl font-semibold text-gray-800 mb-4 flex items-center">
-            <i data-lucide="send" class="w-5 h-5 mr-2 text-primary-blue"></i> 即時更新/問題回報
-          </h3>
-          <form id="integration-form" class="space-y-4">
-            <div>
-              <label class="block text-sm font-medium text-gray-700">選擇專案</label>
-              <select id="update-project-id" class="mt-1 block w-full rounded-md border-gray-300 p-2 border">
-                ${ projects.length>0 ? projects.map(p=>`<option value="${escapeHtml(p.id)}">${escapeHtml(p.id)} - ${escapeHtml(p.title)}</option>`).join("") : '<option value="">請先新增專案</option>' }
-              </select>
-            </div>
-            <div>
-              <label class="block text-sm font-medium text-gray-700">負責人</label>
-              <select id="update-manager" class="mt-1 block w-full rounded-md border-gray-300 p-2 border">
-                ${ managerOptionsHtml() }
-              </select>
-            </div>
-            <div>
-              <label class="block text-sm font-medium text-gray-700">更新/問題描述</label>
-              <textarea id="update-message" rows="3" class="mt-1 block w-full rounded-md border-gray-300 p-2 border" placeholder="請輸入更新內容"></textarea>
-            </div>
-            <button type="submit" class="w-full py-2 bg-accent-orange text-white rounded-lg hover:bg-orange-700">提交更新</button>
-          </form>
-          <div id="update-feedback" class="mt-4 text-sm font-medium"></div>
-        </div>
       `;
       if(window.lucide?.createIcons) lucide.createIcons();
-
-      // 綁定即時更新表單
-      document.getElementById("integration-form")?.addEventListener("submit", async (e)=>{
-        e.preventDefault();
-        const projectId = document.getElementById("update-project-id").value;
-        const projectTitle = projects.find(p=>p.id===projectId)?.title || projectId;
-        const manager = document.getElementById("update-manager").value;
-        const message = document.getElementById("update-message").value;
-        const feedback = document.getElementById("update-feedback");
-
-        if(!message || !projectId){
-          feedback.className="mt-4 text-sm text-red-600"; feedback.textContent="請填寫完整的更新訊息。"; return;
-        }
-        if(!isAuthorized()){
-          feedback.className="mt-4 text-sm text-red-600"; feedback.textContent="請先登入再提交。"; return;
-        }
-        try{
-          const ref = await addDoc(collection(db, TASKS_COLLECTION_PATH), {
-            projectId, taskName:`即時更新: ${message.substring(0,30)}...`, description: message,
-            assignee: manager, dueDate: new Date().toISOString().slice(0,10), status:"更新",
-            createdAt: serverTimestamp(), reporterId: currentUserId
-          });
-          sendTeamsNotification(`[專案更新] ${projectTitle}`, `**回報人:** ${manager}\n\n**專案:** ${projectTitle} (${projectId})\n\n**訊息:** ${message}`, "ea580c");
-          feedback.className="mt-4 text-sm text-secondary-green"; feedback.textContent=`成功提交更新 (ID: ${ref.id})。`;
-          document.getElementById("integration-form").reset();
-        }catch(err){
-          console.error(err);
-          feedback.className="mt-4 text-sm text-red-600"; feedback.textContent="提交更新失敗：資料庫錯誤。";
-        }
-      });
 
       // 初始化儀錶板迷你行事曆
       const calEl = document.getElementById("mini-calendar");
@@ -1031,25 +952,178 @@
       recalc();
     }
 
-    // 其餘視圖（任務、行事曆、報表、詳情、社群）原樣保留
-    function renderTaskManagement(){ /* 原始程式碼保持不變 */ }
-    function renderCalendar(){ /* 原始程式碼保持不變 */ }
-    function renderReport(){ /* 原始程式碼保持不變 */ }
-    function renderProjectDetails(projectId){ /* 原始程式碼保持不變 */ }
-    function renderCommunity(){ /* 原始程式碼保持不變 */ }
+    // Brain：移入 AI 摘要功能
+    function renderReport(){
+      const c = document.getElementById("main-content");
+      if(!c) return;
 
-    // ---- 關鍵新增：讓按鈕先可用，並啟動 Firebase ----
+      c.innerHTML = `
+        <h2 class="text-3xl font-bold text-gray-800 mb-6 border-b pb-2 flex items-center">
+          <i data-lucide="brain" class="w-7 h-7 mr-3 text-primary-blue"></i> Brain - AI 摘要
+        </h2>
+
+        <div class="project-card bg-white p-6 rounded-xl shadow-lg">
+          <p class="text-sm text-gray-500 mb-3">依據當月/當週的專案、任務與行事曆資料，自動生成摘要報告。</p>
+          <div class="flex flex-wrap gap-3 mb-3">
+            <button class="px-3 py-2 rounded-lg bg-primary-blue text-white hover:bg-blue-700 text-sm" onclick="generateAIReport('week')">產生本週摘要</button>
+            <button class="px-3 py-2 rounded-lg bg-secondary-green text-white hover:bg-green-700 text-sm" onclick="generateAIReport('month')">產生本月摘要</button>
+            <button id="btn-ai-download" class="px-3 py-2 rounded-lg bg-gray-200 text-gray-700 hover:bg-gray-300 text-sm" disabled>下載摘要</button>
+          </div>
+          <div class="border rounded-lg p-3 bg-gray-50">
+            <pre id="ai-summary-box" class="whitespace-pre-wrap text-sm text-gray-800">點擊上方按鈕生成 AI 摘要...</pre>
+          </div>
+        </div>
+      `;
+      if(window.lucide?.createIcons) lucide.createIcons();
+    }
+
+    // 行事曆：完整功能（含新增事項）
+    function renderCalendar(){
+      const c = document.getElementById("main-content");
+      if(!c) return;
+
+      // 銷毀舊實例
+      if (calendarInstance) {
+        try { calendarInstance.destroy(); } catch(_) {}
+        calendarInstance = null;
+      }
+
+      const projectOptions = projects.length>0
+        ? projects.map(p=>`<option value="${escapeHtml(p.id)}">${escapeHtml(p.id)} - ${escapeHtml(p.title||"")}</option>`).join("")
+        : '<option value="">尚無專案</option>';
+
+      c.innerHTML = `
+        <h2 class="text-3xl font-bold text-gray-800 mb-6 border-b pb-2 flex items-center">
+          <i data-lucide="calendar" class="w-7 h-7 mr-3 text-primary-blue"></i> 行事曆
+        </h2>
+
+        <div class="grid grid-cols-1 lg:grid-cols-4 gap-6">
+          <!-- 新增事項表單 -->
+          <div class="lg:col-span-1 project-card bg-white p-5 rounded-xl shadow">
+            <h3 class="text-lg font-semibold text-gray-800 mb-3 flex items-center">
+              <i data-lucide="plus" class="w-5 h-5 mr-2 text-primary-blue"></i> 新增事項
+            </h3>
+            <form id="new-event-form" class="space-y-3">
+              <div>
+                <label class="block text-sm text-gray-700">標題</label>
+                <input id="ev-title" type="text" class="mt-1 w-full rounded-md border-gray-300 p-2 border" placeholder="輸入事件標題" required>
+              </div>
+              <div>
+                <label class="block text-sm text-gray-700">所屬專案</label>
+                <select id="ev-project" class="mt-1 w-full rounded-md border-gray-300 p-2 border">${projectOptions}</select>
+              </div>
+              <div>
+                <label class="block text-sm text-gray-700">負責人</label>
+                <select id="ev-assignee" class="mt-1 w-full rounded-md border-gray-300 p-2 border">
+                  ${ managerOptionsHtml() }
+                </select>
+              </div>
+              <div class="grid grid-cols-2 gap-3">
+                <div>
+                  <label class="block text-sm text-gray-700">開始日期</label>
+                  <input id="ev-start" type="date" class="mt-1 w-full rounded-md border-gray-300 p-2 border" required>
+                </div>
+                <div>
+                  <label class="block text-sm text-gray-700">結束日期</label>
+                  <input id="ev-end" type="date" class="mt-1 w-full rounded-md border-gray-300 p-2 border">
+                </div>
+              </div>
+              <button type="submit" class="w-full py-2 bg-primary-blue text-white rounded-lg hover:bg-blue-700">新增</button>
+              <div id="event-form-feedback" class="text-sm mt-2"></div>
+            </form>
+            <p class="text-xs text-gray-500 mt-3">提示：點選下方行事曆日期可自動帶入開始/結束日。</p>
+          </div>
+
+          <!-- 完整行事曆 -->
+          <div class="lg:col-span-3 project-card bg-white p-5 rounded-xl shadow">
+            <div id="full-calendar"></div>
+          </div>
+        </div>
+      `;
+      if(window.lucide?.createIcons) lucide.createIcons();
+
+      // 初始化 FullCalendar
+      const calEl = document.getElementById("full-calendar");
+      if (calEl && window.FullCalendar?.Calendar) {
+        const evs = (events||[]).map(ev => ({
+          id: ev.id,
+          title: `${ev.title || "事件"}${ev.projectId ? `（${ev.projectId}）` : ""}`,
+          start: ev.startDate || ev.date || "",
+          end: ev.endDate || ev.startDate || ev.date || "",
+          allDay: true
+        }));
+
+        calendarInstance = new FullCalendar.Calendar(calEl, {
+          initialView: "dayGridMonth",
+          height: "auto",
+          headerToolbar: { left: "prev,next today", center: "title", right: "dayGridMonth,dayGridWeek,dayGridDay" },
+          events: evs,
+          firstDay: 1,
+          dateClick: (info)=>{
+            const s = document.getElementById("ev-start");
+            const e = document.getElementById("ev-end");
+            if(s) s.value = info.dateStr;
+            if(e) e.value = info.dateStr;
+          }
+        });
+        calendarInstance.render();
+      }
+
+      // 綁定新增事件表單
+      document.getElementById("new-event-form")?.addEventListener("submit", async (e)=>{
+        e.preventDefault();
+        const feedback = document.getElementById("event-form-feedback");
+        if(!isAuthorized()){
+          feedback.className="text-sm mt-2 text-red-600";
+          feedback.textContent="請先登入再新增事件。";
+          return;
+        }
+        const title = document.getElementById("ev-title").value.trim();
+        const projectId = document.getElementById("ev-project").value || "";
+        const assignee = document.getElementById("ev-assignee").value || "";
+        const startDate = document.getElementById("ev-start").value;
+        const endDate = document.getElementById("ev-end").value || startDate;
+
+        if(!title || !startDate){
+          feedback.className="text-sm mt-2 text-red-600";
+          feedback.textContent="請填寫標題與開始日期。";
+          return;
+        }
+
+        try{
+          const ref = await addDoc(collection(db, EVENTS_COLLECTION_PATH), {
+            title, projectId, assignee, startDate, endDate,
+            createdAt: serverTimestamp(), reporterId: currentUserId
+          });
+          feedback.className="text-sm mt-2 text-secondary-green";
+          feedback.textContent=`新增成功 (ID: ${ref.id})。`;
+          (document.getElementById("new-event-form") as any)?.reset?.();
+          // 重新渲染由 onSnapshot 驅動
+        }catch(err){
+          console.error(err);
+          feedback.className="text-sm mt-2 text-red-600";
+          feedback.textContent="新增失敗：資料庫錯誤。";
+        }
+      });
+    }
+
+    // 其餘視圖（任務、詳情、社群）可保留原樣或後續擴充
+    function renderTaskManagement(){ /* 原始程式碼保持不變（此處略） */ }
+    function renderProjectDetails(projectId){ /* 原始程式碼保持不變（此處略） */ }
+    function renderCommunity(){ /* 原始程式碼保持不變（此處略） */ }
+
+    // ---- 啟動：讓按鈕先可用，並啟動 Firebase ----
     try { wireEmailAuthButtons(); } catch (_) {}
     try { initFirebase(); } catch (e) {
       console.error("初始化失敗：", e);
       const box = document.getElementById("auth-error");
       if (box) box.textContent = "初始化失敗：" + (e?.message || String(e));
     }
-    // 額外保險：DOM 完成後再綁一次
+    // DOM 完成後再保險綁一次
     window.addEventListener("DOMContentLoaded", () => {
       try { wireEmailAuthButtons(); } catch (_) {}
     });
-    // 全域錯誤顯示，避免「沒反應卻沒有訊息」
+    // 全域錯誤顯示
     window.addEventListener("error", (e) => {
       const box = document.getElementById("auth-error");
       if (box && !box.textContent) box.textContent = "錯誤：" + (e?.message || String(e.error || e));

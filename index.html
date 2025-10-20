@@ -46,7 +46,7 @@
     window.__app_id = "taiwanplan-f7566";
     window.__auth_mode = "password";
     window.__sharepoint_flow_url = "REPLACE_WITH_YOUR_POWER_AUTOMATE_HTTP_TRIGGER_URL";
-    window.__ai_summary_webapp_url = "https://script.google.com/macros/s/AKfycbzBaT08WiuMIpqVNrG70iTVMUFXY1X-1zSn0uKa3xgLa4KdUwFbL5q7xh5OwpJMAblAdQ/exec";
+    window.__ai_summary_webapp_url = "https://script.google.com/macros/s/AKfycbzWaAm7NkrSoj08pkY5YPsPDaN314_QlKrMvlGz76M7-8oXU2IVWyXjeZqAKmOUBqj6qA/exec";
   </script>
 
   <script>
@@ -235,7 +235,7 @@
     let budgetCaps = { personnelCap: 0, operatingCap: 0, equipmentCap: 0 };
     let selectedProjectId = null;
     let calendarInstance = null;
-    let miniCalendarInstance = null; // 儀錶板的迷你行事曆
+    let miniCalendarInstance = null;
     let detailsWatchersUnsub = null;
 
     function escapeHtml(str){
@@ -300,7 +300,6 @@
       URL.revokeObjectURL(url);
     }
 
-    // GitHub Pages 判斷（略過 /notify）
     const IS_PAGES = location.hostname.endsWith(".github.io");
     async function sendTeamsNotification(title,text,color="0078D4"){
       if(IS_PAGES) return;
@@ -314,7 +313,6 @@
       }catch(e){ console.warn("notify error", e); }
     }
 
-    // SharePoint 備份（非阻斷）
     async function backupProjectToSharePoint(p){
       if(!SHAREPOINT_FLOW_URL || /REPLACE/.test(SHAREPOINT_FLOW_URL)) return;
       const body = {
@@ -336,7 +334,6 @@
       }
     }
 
-    // AI 週/月報（提供給 Brain 視圖使用）
     async function generateAIReport(mode){
       const url = AI_SUMMARY_WEBAPP_URL;
       if(!url || /REPLACE/.test(url)) { showModal("未設定 AI 端點", "請先部署 AI Web App URL 後再使用。"); return; }
@@ -385,7 +382,6 @@
       }
     }
 
-    // 初始化 Firebase + Auth
     async function initFirebase(){
       if(!firebaseConfig) { console.error("缺少 Firebase 設定"); return; }
       const app = initializeApp(firebaseConfig);
@@ -467,7 +463,7 @@
       if(landing) landing.classList.remove("hidden");
       if(appShell) appShell.classList.add("hidden");
       if(window.lucide?.createIcons) lucide.createIcons();
-      authButtonsWired = false; // Reset flag when showing landing
+      authButtonsWired = false;
       wireEmailAuthButtons();
     }
 
@@ -481,7 +477,6 @@
       if(window.lucide?.createIcons) lucide.createIcons();
     }
 
-    // Email/Password 登入/註冊
     function setAuthLoading(loading) {
       const loadingEl = document.getElementById("landing-loading");
       const btnIn = document.getElementById("btn-email-signin");
@@ -546,10 +541,9 @@
       }
     };
 
-    // 綁定按鈕
     let authButtonsWired = false;
     function wireEmailAuthButtons(){
-      if (authButtonsWired) return; // Prevent duplicate event listeners
+      if (authButtonsWired) return;
       const signInBtn = document.getElementById("btn-email-signin");
       const signUpBtn = document.getElementById("btn-email-signup");
       if (signInBtn) {
@@ -561,15 +555,12 @@
       authButtonsWired = true;
     }
 
-    // 登出
     window.appSignOut = async function(){
       try{ await signOut(auth); }catch(e){ console.error(e); }
     };
 
-    // 權限檢查
     function isAuthorized(){ return !!currentUserId; }
 
-    // 側欄切換
     window.toggleSidebar = function(){
       const sidebar = document.getElementById("app-sidebar");
       const main = document.getElementById("app-main");
@@ -580,7 +571,6 @@
       main.style.marginLeft = expanded ? "72px" : "240px";
     };
 
-    // 監聽資料
     function startRealtimeListeners(){
       if(!db || listenersStarted) return;
       listenersStarted = true;
@@ -596,7 +586,7 @@
       onSnapshot(query(collection(db, EVENTS_COLLECTION_PATH), orderBy("startDate","asc")), (snap)=>{
         events = snap.docs.map(d=>({id:d.id, ...d.data()}));
         if(currentView==="calendar") renderCalendar();
-        if(currentView==="dashboard") renderDashboard(); // 讓迷你行事曆即時更新
+        if(currentView==="dashboard") renderDashboard();
       });
       onSnapshot(query(collection(db, FILES_COLLECTION_PATH), orderBy("uploadedAt","desc")), (snap)=>{
         files = snap.docs.map(d=>({id:d.id, ...d.data()}));
@@ -621,7 +611,6 @@
       });
     }
 
-    // 視圖切換
     window.setView = function(view, arg){
       currentView = view;
       setActiveByView(view);
@@ -633,7 +622,7 @@
       }
       else if(view==="tasks"){ renderTaskManagement(); }
       else if(view==="calendar"){ renderCalendar(); }
-      else if(view==="report"){ renderReport(); }  // Brain (AI 摘要)
+      else if(view==="report"){ renderReport(); }
       else if(view==="community"){ renderCommunity(); }
     };
     function setActiveByView(view){
@@ -652,12 +641,10 @@
       if(currentView==="community") renderCommunity();
     }
 
-    // 儀錶板：AI 摘要改移 Brain，這裡保留迷你行事曆與統計
     function renderDashboard(){
       const c = document.getElementById("main-content");
       if(!c) return;
 
-      // 銷毀既有迷你行事曆避免重複
       if (miniCalendarInstance) {
         try { miniCalendarInstance.destroy(); } catch(_) {}
         miniCalendarInstance = null;
@@ -722,14 +709,13 @@
             <div class="w-full bg-gray-200 rounded-full h-3"><div class="progress-bar h-3 rounded-full ${barClass(oRate, oRemain)}" style="width:${(oRate*100).toFixed(0)}%"></div></div>
             <div class="mt-2 text-sm text-gray-700 flex justify-between"><span>已用：<strong>${fmtMoney(operatingUsed)}</strong>（${(oRate*100).toFixed(0)}%）</span><span>${oRemain>=0 ? `餘額：${fmtMoney(oRemain)}` : `超支：${fmtMoney(-oRemain)}`}</span></div>
           </div>
-          <div class="project-card bg白 p-6 rounded-xl shadow-lg border-t-4 border-primary-blue">
+          <div class="project-card bg-white p-6 rounded-xl shadow-lg border-t-4 border-primary-blue">
             <div class="flex items-center justify-between mb-2"><div class="font-semibold text-gray-800">設備費總預算</div><div class="text-sm text-gray-500">${fmtMoney(ec)}</div></div>
             <div class="w-full bg-gray-200 rounded-full h-3"><div class="progress-bar h-3 rounded-full ${barClass(eRate, eRemain)}" style="width:${(eRate*100).toFixed(0)}%"></div></div>
             <div class="mt-2 text-sm text-gray-700 flex justify-between"><span>已用：<strong>${fmtMoney(equipmentUsed)}</strong>（${(eRate*100).toFixed(0)}%）</span><span>${eRemain>=0 ? `餘額：${fmtMoney(eRemain)}` : `超支：${fmtMoney(-eRemain)}`}</span></div>
           </div>
         </div>
 
-        <!-- 保留：迷你行事曆（AI 摘要已移至 Brain） -->
         <div class="project-card bg-white p-6 rounded-xl shadow-lg">
           <h3 class="text-xl font-semibold text-gray-800 mb-4 flex items-center">
             <i data-lucide="calendar" class="w-5 h-5 mr-2 text-primary-blue"></i> 行事曆（本月）
@@ -793,7 +779,6 @@
       `;
       if(window.lucide?.createIcons) lucide.createIcons();
 
-      // 初始化儀錶板迷你行事曆（顯示中文文字按鈕）
       const calEl = document.getElementById("mini-calendar");
       if (calEl && window.FullCalendar?.Calendar) {
         const evs = (events||[]).map(ev => ({
@@ -818,7 +803,6 @@
       }
     }
 
-    // 新增專案
     function isValidProjectId(id){ return /^[A-Za-z0-9_-]{3,64}$/.test(id||""); }
     async function handleNewProjectSubmission(e){
       e.preventDefault();
@@ -950,7 +934,6 @@
 
       document.getElementById("new-project-form")?.addEventListener("submit", handleNewProjectSubmission);
 
-      // 自動合計預算
       const recalc = ()=>{
         const a = n(document.getElementById("proj-personnel").value);
         const b = n(document.getElementById("proj-operating").value);
@@ -963,7 +946,6 @@
       recalc();
     }
 
-    // Brain：AI 摘要功能
     function renderReport(){
       const c = document.getElementById("main-content");
       if(!c) return;
@@ -988,12 +970,10 @@
       if(window.lucide?.createIcons) lucide.createIcons();
     }
 
-    // 行事曆：完整功能（含新增事項 & 中文文字按鈕）
     function renderCalendar(){
       const c = document.getElementById("main-content");
       if(!c) return;
 
-      // 銷毀舊實例
       if (calendarInstance) {
         try { calendarInstance.destroy(); } catch(_) {}
         calendarInstance = null;
@@ -1009,7 +989,6 @@
         </h2>
 
         <div class="grid grid-cols-1 lg:grid-cols-4 gap-6">
-          <!-- 新增事項表單 -->
           <div class="lg:col-span-1 project-card bg-white p-5 rounded-xl shadow">
             <h3 class="text-lg font-semibold text-gray-800 mb-3 flex items-center">
               <i data-lucide="plus" class="w-5 h-5 mr-2 text-primary-blue"></i> 新增事項
@@ -1045,7 +1024,6 @@
             <p class="text-xs text-gray-500 mt-3">提示：點選右側行事曆日期可自動帶入開始/結束日。</p>
           </div>
 
-          <!-- 完整行事曆 -->
           <div class="lg:col-span-3 project-card bg-white p-5 rounded-xl shadow">
             <div id="full-calendar"></div>
           </div>
@@ -1053,7 +1031,6 @@
       `;
       if(window.lucide?.createIcons) lucide.createIcons();
 
-      // 初始化 FullCalendar（顯示中文文字按鈕）
       const calEl = document.getElementById("full-calendar");
       if (calEl && window.FullCalendar?.Calendar) {
         const evs = (events||[]).map(ev => ({
@@ -1083,7 +1060,6 @@
         calendarInstance.render();
       }
 
-      // 綁定新增事件表單
       document.getElementById("new-event-form")?.addEventListener("submit", async (e)=>{
         e.preventDefault();
         const feedback = document.getElementById("event-form-feedback");
@@ -1113,7 +1089,6 @@
           feedback.textContent=`新增成功 (ID: ${ref.id})。`;
           const form = document.getElementById("new-event-form");
           if (form && typeof form.reset === "function") form.reset();
-          // 重新渲染由 onSnapshot 驅動
         }catch(err){
           console.error(err);
           feedback.className="text-sm mt-2 text-red-600";
@@ -1122,7 +1097,6 @@
       });
     }
 
-    // Planner（任務管理）：留言板風格 + 專案管理人
     function renderTaskManagement(){
       const c = document.getElementById("main-content");
       if(!c) return;
@@ -1131,7 +1105,6 @@
         ? `<option value="">全部專案</option>` + projects.map(p=>`<option value="${escapeHtml(p.id)}">${escapeHtml(p.id)} - ${escapeHtml(p.title||"")}</option>`).join("")
         : '<option value="">全部專案</option>';
 
-      // 篩選選項
       const statusSet = new Set(tasks.map(t => (t.status||"").trim()).filter(Boolean));
       const statusOptions = ['全部狀態', ...Array.from(statusSet).filter(Boolean)];
       const assigneeSet = new Set(tasks.map(t => (t.assignee||"").trim()).filter(Boolean));
@@ -1144,7 +1117,6 @@
           <i data-lucide="calendar-days" class="w-7 h-7 mr-3 text-primary-blue"></i> Planner（任務管理）
         </h2>
 
-        <!-- 新增任務（含專案管理人） -->
         <div class="project-card bg-white p-6 rounded-xl shadow mb-8">
           <h3 class="text-lg font-semibold text-gray-800 mb-4 flex items-center">
             <i data-lucide="plus" class="w-5 h-5 mr-2 text-primary-blue"></i> 新增任務
@@ -1187,7 +1159,6 @@
           </form>
         </div>
 
-        <!-- 篩選 -->
         <div class="project-card bg-white p-4 rounded-xl shadow mb-4">
           <div class="grid grid-cols-1 md:grid-cols-6 gap-3">
             <div>
@@ -1227,12 +1198,10 @@
           </div>
         </div>
 
-        <!-- 留言板風格清單 -->
         <div id="task-list" class="space-y-3"></div>
       `;
       if(window.lucide?.createIcons) lucide.createIcons();
 
-      // 新增任務
       document.getElementById("new-task-form")?.addEventListener("submit", async (e)=>{
         e.preventDefault();
         const feedback = document.getElementById("task-form-feedback");
@@ -1252,14 +1221,13 @@
           });
           feedback.className="text-sm text-secondary-green"; feedback.textContent=`新增成功 (ID: ${ref.id})。`;
           (document.getElementById("new-task-form")).reset();
-          renderRows(); // 立即刷新
+          renderRows();
         }catch(err){
           console.error(err);
           feedback.className="text-sm text-red-600"; feedback.textContent="新增失敗：資料庫錯誤。";
         }
       });
 
-      // 篩選與渲染
       function getFilters(){
         return {
           project: document.getElementById("flt-project").value || "",
@@ -1372,11 +1340,9 @@
         if(window.lucide?.createIcons) lucide.createIcons();
       }
 
-      // 公開操作以便 onclick 使用
       window.__editTask = function(id){ editingId = id; renderRows(); };
       window.__cancelEditTask = function(){ editingId = null; renderRows(); };
       window.__saveTask = async function(id){
-        const task = tasks.find(x=>x.id===id) || {};
         const taskName = document.getElementById(`ed-name-${id}`).value.trim();
         const description = document.getElementById(`ed-desc-${id}`).value;
         const assignee = document.getElementById(`ed-assignee-${id}`).value;
@@ -1400,7 +1366,6 @@
         }
       };
 
-      // 綁定篩選
       ["flt-project","flt-assignee","flt-pm","flt-status","flt-from","flt-to","flt-search"].forEach(id=>{
         document.getElementById(id)?.addEventListener("input", renderRows);
         document.getElementById(id)?.addEventListener("change", renderRows);
@@ -1415,7 +1380,6 @@
       renderRows();
     }
 
-    // 專案詳情：管理人追蹤 + 專案相關清單
     async function toggleFollowProject(projectId){
       if(!isAuthorized()){ showModal("未登入","請先登入再追蹤專案。"); return; }
       const id = `${projectId}__${currentUserId}`;
@@ -1432,6 +1396,53 @@
         }
       }
     }
+
+    window.exportProjectCsv = function(projectId){
+      const p = projects.find(x=>x.id===projectId);
+      if(!p){ showModal("匯出失敗","找不到專案。"); return; }
+
+      const headers = [
+        "type","projectId","projectTitle","manager","budget","progress","status",
+        "taskId","taskName","taskAssignee","taskDueDate","taskStatus",
+        "eventId","eventTitle","eventAssignee","eventStartDate","eventEndDate"
+      ];
+
+      const rows = [];
+      rows.push({
+        type:"project",
+        projectId:p.id,
+        projectTitle:p.title||"",
+        manager:p.manager||"",
+        budget:Number(p.budget)||0,
+        progress:Number(p.progress)||0,
+        status:p.status||""
+      });
+
+      const tks = tasks.filter(t=>t.projectId===projectId);
+      for(const t of tks){
+        rows.push({
+          type:"task",
+          projectId:p.id, projectTitle:p.title||"", manager:p.manager||"",
+          budget:Number(p.budget)||0, progress:Number(p.progress)||0, status:p.status||"",
+          taskId:t.id||"", taskName:t.taskName||"", taskAssignee:t.assignee||"",
+          taskDueDate:t.dueDate||"", taskStatus:t.status||""
+        });
+      }
+
+      const evs = events.filter(e=>e.projectId===projectId);
+      for(const ev of evs){
+        rows.push({
+          type:"event",
+          projectId:p.id, projectTitle:p.title||"", manager:p.manager||"",
+          budget:Number(p.budget)||0, progress:Number(p.progress)||0, status:p.status||"",
+          eventId:ev.id||"", eventTitle:ev.title||"", eventAssignee:ev.assignee||"",
+          eventStartDate:ev.startDate||ev.date||"", eventEndDate:ev.endDate||ev.startDate||ev.date||""
+        });
+      }
+
+      const csv = arrayToCsv(headers, rows);
+      triggerDownloadCsv(csv, `project_${p.id}.csv`);
+    };
 
     function renderProjectDetails(projectId){
       const c = document.getElementById("main-content");
@@ -1475,7 +1486,18 @@
               </div>
               <div class="text-right">
                 <div id="follow-indicator" class="text-sm text-gray-600">追蹤者：-- 人</div>
-                <button id="btn-follow-project" class="mt-2 px-3 py-1.5 text-sm rounded-md bg-primary-blue text-white hover:bg-blue-700" onclick="toggleFollowProject('${escapeHtml(projectId)}')">追蹤此專案</button>
+                <div class="mt-2 flex gap-2 justify-end">
+                  <button id="btn-follow-project"
+                          class="px-3 py-1.5 text-sm rounded-md bg-primary-blue text-white hover:bg-blue-700"
+                          onclick="toggleFollowProject('${escapeHtml(projectId)}')">
+                    追蹤此專案
+                  </button>
+                  <button id="btn-export-project"
+                          class="px-3 py-1.5 text-sm rounded-md bg-gray-100 text-gray-700 hover:bg-gray-200"
+                          onclick="exportProjectCsv('${escapeHtml(projectId)}')">
+                    下載專案 CSV
+                  </button>
+                </div>
               </div>
             </div>
 
@@ -1549,7 +1571,6 @@
             </div>
           </div>
 
-          <!-- 近期檔案 -->
           <div class="lg:col-span-1 project-card bg-white p-6 rounded-xl shadow">
             <h3 class="text-lg font-semibold text-gray-800 mb-3 flex items-center">
               <i data-lucide="paperclip" class="w-5 h-5 mr-2 text-primary-blue"></i> 近期檔案
@@ -1571,7 +1592,6 @@
       if(window.lucide?.createIcons) lucide.createIcons();
     }
 
-    // 資訊交流：分享圖片、文章、文字、連結（保留前版）
     async function uploadImageAndGetUrl(file){
       if(!file) return "";
       const path = `community_uploads/${currentUserId || 'anonymous'}/${Date.now()}_${file.name}`;
@@ -1593,7 +1613,7 @@
             <div class="flex items-center gap-3">
               <div class="w-9 h-9 rounded-full bg-gray-200 overflow-hidden flex-shrink-0">
                 ${ p.authorPhotoURL ? `<img src="${escapeHtml(p.authorPhotoURL)}" class="w-full h-full object-cover">`
-                                    : `<div class="w-full h-full flex items-center justify-center text-black/70 font-bold text-xs">${escapeHtml((p.authorName||'U').charAt(0).toUpperCase())}</div>` }
+                                    : `<div class="w-full h-full flex items中心 justify-center text-black/70 font-bold text-xs">${escapeHtml((p.authorName||'U').charAt(0).toUpperCase())}</div>` }
               </div>
               <div class="min-w-0">
                 <div class="text-sm font-semibold">${escapeHtml(p.authorName||"使用者")}</div>
@@ -1665,7 +1685,6 @@
       `;
       if(window.lucide?.createIcons) lucide.createIcons();
 
-      // 類型切換
       const typeEl = document.getElementById("post-type");
       const fieldTitle = document.getElementById("field-title");
       const fieldUrl = document.getElementById("field-url");
@@ -1681,7 +1700,6 @@
       typeEl.addEventListener("change", updateFields);
       updateFields();
 
-      // 發佈貼文
       document.getElementById("post-form")?.addEventListener("submit", async (e)=>{
         e.preventDefault();
         const feedback = document.getElementById("post-feedback");
@@ -1724,7 +1742,6 @@
         }
       });
 
-      // 重新渲染貼文串
       function rerenderFeed(){
         const feed = document.getElementById("post-feed");
         if(feed) feed.innerHTML = renderPostCards(communityPosts);
@@ -1734,18 +1751,15 @@
       rerenderFeed();
     }
 
-    // ---- 啟動：讓按鈕先可用，並啟動 Firebase ----
     try { wireEmailAuthButtons(); } catch (_) {}
     try { initFirebase(); } catch (e) {
       console.error("初始化失敗：", e);
       const box = document.getElementById("auth-error");
       if (box) box.textContent = "初始化失敗：" + (e?.message || String(e));
     }
-    // DOM 完成後再保險綁一次
     window.addEventListener("DOMContentLoaded", () => {
       try { wireEmailAuthButtons(); } catch (_) {}
     });
-    // 全域錯誤顯示
     window.addEventListener("error", (e) => {
       const box = document.getElementById("auth-error");
       if (box && !box.textContent) box.textContent = "錯誤：" + (e?.message || String(e.error || e));

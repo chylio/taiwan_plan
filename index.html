@@ -35,6 +35,7 @@
   <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/index.global.min.js"></script>
 
   <script>
+    // 基本設定（請將 SharePoint Flow URL 改成你的 Power Automate 觸發器網址）
     window.__firebase_config_object = {
       apiKey: "AIzaSyCIXWS0ynK4GdsdQIXkOs3fHuzAendZ7LA",
       authDomain: "taiwanplan-f7566.firebaseapp.com",
@@ -46,6 +47,7 @@
     window.__app_id = "taiwanplan-f7566";
     window.__auth_mode = "password";
     window.__sharepoint_flow_url = "REPLACE_WITH_YOUR_POWER_AUTOMATE_HTTP_TRIGGER_URL";
+    // 你的 Apps Script Web App 端點（AI 摘要）
     window.__ai_summary_webapp_url = "https://script.google.com/macros/s/AKfycbzWaAm7NkrSoj08pkY5YPsPDaN314_QlKrMvlGz76M7-8oXU2IVWyXjeZqAKmOUBqj6qA/exec";
   </script>
 
@@ -84,6 +86,7 @@
 </head>
 
 <body class="font-sans bg-gray-100">
+  <!-- 登入頁 -->
   <section id="landing" class="landing-bg min-h-screen flex items-center justify-center px-4">
     <div class="max-w-md w-full">
       <div class="text-center mb-6">
@@ -138,6 +141,7 @@
     </div>
   </section>
 
+  <!-- 應用主殼 -->
   <div id="app-shell" class="hidden">
     <aside id="app-sidebar" class="fixed inset-y-2 left-2 z-10 rounded-2xl bg-black text-white shadow-2xl flex flex-col justify-between py-3 transition-all duration-200 expanded" style="width:240px;">
       <div class="w-full">
@@ -174,6 +178,7 @@
     </main>
   </div>
 
+  <!-- Modal -->
   <div id="custom-modal" class="fixed inset-0 bg-gray-900 bg-opacity-75 z-50 hidden items-center justify-center">
     <div class="bg-white rounded-xl p-6 w-full max-w-sm shadow-2xl transform transition-all duration-300 scale-95 opacity-0" id="modal-content-wrapper">
       <h3 id="modal-title" class="text-xl font-bold mb-4 text-primary-blue">提示</h3>
@@ -263,15 +268,6 @@
       const list = (managers.length>0 ? managers.map(m=>m.name).filter(Boolean) : DEFAULT_MANAGERS);
       return list.map(m => `<option value="${escapeHtml(m)}" ${m===selected?'selected':''}>${escapeHtml(m)}</option>`).join("");
     }
-    function tsToDateStr(v){
-      try{
-        if(!v) return "";
-        if (typeof v === "string") return v.slice(0,10);
-        if (v?.toDate) return v.toDate().toISOString().slice(0,10);
-        if (v instanceof Date) return v.toISOString().slice(0,10);
-        return "";
-      }catch{ return ""; }
-    }
     function isoToLocale(s){
       if(!s) return "";
       try{ return new Date(s).toLocaleString(); }catch{ return s; }
@@ -300,6 +296,7 @@
       URL.revokeObjectURL(url);
     }
 
+    // 內部通知（可略）
     const IS_PAGES = location.hostname.endsWith(".github.io");
     async function sendTeamsNotification(title,text,color="0078D4"){
       if(IS_PAGES) return;
@@ -313,6 +310,7 @@
       }catch(e){ console.warn("notify error", e); }
     }
 
+    // SharePoint 備份：新增專案成功後呼叫（非阻斷）
     async function backupProjectToSharePoint(p){
       if(!SHAREPOINT_FLOW_URL || /REPLACE/.test(SHAREPOINT_FLOW_URL)) return;
       const body = {
@@ -334,6 +332,7 @@
       }
     }
 
+    // AI 摘要（Brain）
     async function generateAIReport(mode){
       const url = AI_SUMMARY_WEBAPP_URL;
       if(!url || /REPLACE/.test(url)) { showModal("未設定 AI 端點", "請先部署 AI Web App URL 後再使用。"); return; }
@@ -382,6 +381,7 @@
       }
     }
 
+    // 初始化 Firebase
     async function initFirebase(){
       if(!firebaseConfig) { console.error("缺少 Firebase 設定"); return; }
       const app = initializeApp(firebaseConfig);
@@ -477,6 +477,7 @@
       if(window.lucide?.createIcons) lucide.createIcons();
     }
 
+    // 登入/註冊
     function setAuthLoading(loading) {
       const loadingEl = document.getElementById("landing-loading");
       const btnIn = document.getElementById("btn-email-signin");
@@ -541,6 +542,7 @@
       }
     };
 
+    // 綁定按鈕
     let authButtonsWired = false;
     function wireEmailAuthButtons(){
       if (authButtonsWired) return;
@@ -555,12 +557,15 @@
       authButtonsWired = true;
     }
 
+    // 登出
     window.appSignOut = async function(){
       try{ await signOut(auth); }catch(e){ console.error(e); }
     };
 
+    // 權限
     function isAuthorized(){ return !!currentUserId; }
 
+    // 側欄切換
     window.toggleSidebar = function(){
       const sidebar = document.getElementById("app-sidebar");
       const main = document.getElementById("app-main");
@@ -571,6 +576,7 @@
       main.style.marginLeft = expanded ? "72px" : "240px";
     };
 
+    // 即時監聽
     function startRealtimeListeners(){
       if(!db || listenersStarted) return;
       listenersStarted = true;
@@ -611,6 +617,7 @@
       });
     }
 
+    // 視圖切換
     window.setView = function(view, arg){
       currentView = view;
       setActiveByView(view);
@@ -641,6 +648,7 @@
       if(currentView==="community") renderCommunity();
     }
 
+    // 儀表板（含迷你行事曆）
     function renderDashboard(){
       const c = document.getElementById("main-content");
       if(!c) return;
@@ -779,6 +787,7 @@
       `;
       if(window.lucide?.createIcons) lucide.createIcons();
 
+      // 迷你行事曆（中文文字按鈕）
       const calEl = document.getElementById("mini-calendar");
       if (calEl && window.FullCalendar?.Calendar) {
         const evs = (events||[]).map(ev => ({
@@ -803,6 +812,7 @@
       }
     }
 
+    // 新增專案（含 SharePoint 備份）
     function isValidProjectId(id){ return /^[A-Za-z0-9_-]{3,64}$/.test(id||""); }
     async function handleNewProjectSubmission(e){
       e.preventDefault();
@@ -847,13 +857,14 @@
           createdAt: serverTimestamp(), reporterId: currentUserId
         });
 
+        // 新增後備份到 SharePoint（Flow）
         backupProjectToSharePoint({
           id: projectId, title, manager,
           budget, personnelBudget, operatingBudget, equipmentBudget,
           progress, status
         });
 
-        showModal("成功","專案新增成功！已同步備份。");
+        showModal("成功","專案新增成功！已同步備份（SharePoint Flow）。");
         document.getElementById("new-project-form").reset();
         document.getElementById("proj-budget").value = 0;
       }catch(err){
@@ -863,6 +874,7 @@
       }
     }
 
+    // 新增/編輯專案頁
     function renderProjectCreation(){
       const c = document.getElementById("main-content");
       if(!c) return;
@@ -946,6 +958,7 @@
       recalc();
     }
 
+    // Brain
     function renderReport(){
       const c = document.getElementById("main-content");
       if(!c) return;
@@ -970,6 +983,7 @@
       if(window.lucide?.createIcons) lucide.createIcons();
     }
 
+    // 行事曆（中文文字按鈕 + 新增事件）
     function renderCalendar(){
       const c = document.getElementById("main-content");
       if(!c) return;
@@ -1097,6 +1111,7 @@
       });
     }
 
+    // Planner（留言板風格 + 專案管理人）
     function renderTaskManagement(){
       const c = document.getElementById("main-content");
       if(!c) return;
@@ -1202,6 +1217,7 @@
       `;
       if(window.lucide?.createIcons) lucide.createIcons();
 
+      // 新增任務
       document.getElementById("new-task-form")?.addEventListener("submit", async (e)=>{
         e.preventDefault();
         const feedback = document.getElementById("task-form-feedback");
@@ -1228,6 +1244,7 @@
         }
       });
 
+      // 篩選
       function getFilters(){
         return {
           project: document.getElementById("flt-project").value || "",
@@ -1380,6 +1397,7 @@
       renderRows();
     }
 
+    // 追蹤專案（專案詳情）
     async function toggleFollowProject(projectId){
       if(!isAuthorized()){ showModal("未登入","請先登入再追蹤專案。"); return; }
       const id = `${projectId}__${currentUserId}`;
@@ -1397,6 +1415,7 @@
       }
     }
 
+    // 匯出專案 CSV（專案詳情）
     window.exportProjectCsv = function(projectId){
       const p = projects.find(x=>x.id===projectId);
       if(!p){ showModal("匯出失敗","找不到專案。"); return; }
@@ -1408,6 +1427,7 @@
       ];
 
       const rows = [];
+      // 專案基本資料
       rows.push({
         type:"project",
         projectId:p.id,
@@ -1418,6 +1438,7 @@
         status:p.status||""
       });
 
+      // 任務
       const tks = tasks.filter(t=>t.projectId===projectId);
       for(const t of tks){
         rows.push({
@@ -1429,6 +1450,7 @@
         });
       }
 
+      // 行事
       const evs = events.filter(e=>e.projectId===projectId);
       for(const ev of evs){
         rows.push({
@@ -1444,6 +1466,7 @@
       triggerDownloadCsv(csv, `project_${p.id}.csv`);
     };
 
+    // 專案詳情（含下載 CSV 按鈕）
     function renderProjectDetails(projectId){
       const c = document.getElementById("main-content");
       if(!c) return;
@@ -1592,6 +1615,7 @@
       if(window.lucide?.createIcons) lucide.createIcons();
     }
 
+    // 資訊交流（圖片/文章/文字/連結）
     async function uploadImageAndGetUrl(file){
       if(!file) return "";
       const path = `community_uploads/${currentUserId || 'anonymous'}/${Date.now()}_${file.name}`;
@@ -1613,7 +1637,7 @@
             <div class="flex items-center gap-3">
               <div class="w-9 h-9 rounded-full bg-gray-200 overflow-hidden flex-shrink-0">
                 ${ p.authorPhotoURL ? `<img src="${escapeHtml(p.authorPhotoURL)}" class="w-full h-full object-cover">`
-                                    : `<div class="w-full h-full flex items中心 justify-center text-black/70 font-bold text-xs">${escapeHtml((p.authorName||'U').charAt(0).toUpperCase())}</div>` }
+                                    : `<div class="w-full h-full flex items-center justify-center text-black/70 font-bold text-xs">${escapeHtml((p.authorName||'U').charAt(0).toUpperCase())}</div>` }
               </div>
               <div class="min-w-0">
                 <div class="text-sm font-semibold">${escapeHtml(p.authorName||"使用者")}</div>
@@ -1751,6 +1775,7 @@
       rerenderFeed();
     }
 
+    // 啟動
     try { wireEmailAuthButtons(); } catch (_) {}
     try { initFirebase(); } catch (e) {
       console.error("初始化失敗：", e);

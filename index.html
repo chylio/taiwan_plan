@@ -35,7 +35,7 @@
   <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/index.global.min.js"></script>
 
   <script>
-    // 基本設定（請將 SharePoint Flow URL 改成你的 Power Automate 觸發器網址）
+    // Firebase/基本設定（請確認這些值正確）
     window.__firebase_config_object = {
       apiKey: "AIzaSyCIXWS0ynK4GdsdQIXkOs3fHuzAendZ7LA",
       authDomain: "taiwanplan-f7566.firebaseapp.com",
@@ -46,8 +46,9 @@
     };
     window.__app_id = "taiwanplan-f7566";
     window.__auth_mode = "password";
+    // Power Automate（SharePoint 備份）
     window.__sharepoint_flow_url = "REPLACE_WITH_YOUR_POWER_AUTOMATE_HTTP_TRIGGER_URL";
-    // 你的 Apps Script Web App 端點（AI 摘要）
+    // Apps Script Web App（AI 摘要）
     window.__ai_summary_webapp_url = "https://script.google.com/macros/s/AKfycbzWaAm7NkrSoj08pkY5YPsPDaN314_QlKrMvlGz76M7-8oXU2IVWyXjeZqAKmOUBqj6qA/exec";
   </script>
 
@@ -96,7 +97,7 @@
       </div>
       <div class="bg-white/90 backdrop-blur rounded-2xl shadow-2xl p-8">
         <h1 class="text-3xl font-extrabold text-gray-900 text-center">Welcome back! 歡迎回來！</h1>
-        <p id="landing-tip" class="text-sm text-gray-500 text-center mt-2">請先註冊 Email/密碼帳號，之後即可用帳密登入</p>
+        <p class="text-sm text-gray-500 text-center mt-2">請先註冊 Email/密碼帳號，之後即可用帳密登入</p>
 
         <div id="landing-user" class="hidden mt-6">
           <div class="flex items-center gap-3 p-3 rounded-xl bg-gray-50 border">
@@ -123,19 +124,18 @@
                    class="mt-1 block w-full rounded-md border-gray-300 p-2 border" placeholder="至少 6 個字元">
           </div>
           <div class="grid grid-cols-2 gap-3">
-            <button id="btn-email-signin"
-                    type="button"
-                    class="w-full py-3 rounded-xl bg-primary-blue hover:bg-blue-700 text-white font-semibold"
-                    onclick="signInWithEmailPassword()">以帳號密碼登入</button>
-            <button id="btn-email-signup"
-                    type="button"
-                    class="w-full py-3 rounded-xl bg-secondary-green hover:bg-green-700 text-white font-semibold"
-                    onclick="signUpWithEmailPassword()">註冊新帳號</button>
+            <button id="btn-email-signin" type="button"
+                    class="w-full py-3 rounded-xl bg-primary-blue hover:bg-blue-700 text-white font-semibold">
+              以帳號密碼登入
+            </button>
+            <button id="btn-email-signup" type="button"
+                    class="w-full py-3 rounded-xl bg-secondary-green hover:bg-green-700 text-white font-semibold">
+              註冊新帳號
+            </button>
           </div>
           <div id="auth-error" class="text-sm text-red-600"></div>
+          <div id="landing-loading" class="hidden mt-2 text-center text-sm text-gray-600">處理中，請稍候…</div>
         </div>
-
-        <div id="landing-loading" class="hidden mt-6 text-center text-sm text-gray-600">處理中，請稍候…</div>
       </div>
       <p class="text-xs text-gray-400 text-center mt-6">本網站使用 Firebase Auth 進行登入；登入後方能讀取/寫入資料。</p>
     </div>
@@ -196,7 +196,7 @@
       createUserWithEmailAndPassword, signInWithEmailAndPassword
     } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
     import {
-      getFirestore, doc, addDoc, setDoc, updateDoc, deleteDoc,
+      getFirestore, doc, addDoc, setDoc, getDoc, updateDoc, deleteDoc,
       onSnapshot, collection, query, orderBy, serverTimestamp, setLogLevel, where
     } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
     import {
@@ -229,6 +229,10 @@
     const WATCHERS_COLLECTION_PATH = `artifacts/${APP_ID}/public/data/project_watchers`;
 
     const DEFAULT_MANAGERS = ["蔡雅雯","陳乃菁","吳曉琪","蘇琬淳","楊穎潔","王小明","李小華","張曉安"];
+    const ROLE_OPTIONS = [
+      "行政管理員","物理治療師","研究助理","個案管理師","專責值班主治醫師",
+      "程式設計師","臨床心理師","醫檢師","護理師"
+    ];
     let managers = [];
 
     let currentView = "dashboard";
@@ -243,9 +247,10 @@
     let miniCalendarInstance = null;
     let detailsWatchersUnsub = null;
 
-    // 專案詳情的主持人篩選狀態
+    // 專案詳情主持人篩選狀態
     let detailsFilterPM = "";
 
+    // 工具
     function escapeHtml(str){
       if(str==null) return "";
       return String(str).replace(/&/g,"&amp;").replace(/</g,"&lt;")
@@ -271,19 +276,19 @@
       const list = (managers.length>0 ? managers.map(m=>m.name).filter(Boolean) : DEFAULT_MANAGERS);
       return list.map(m => `<option value="${escapeHtml(m)}" ${m===selected?'selected':''}>${escapeHtml(m)}</option>`).join("");
     }
+    function rolesCheckboxesHtml(selectedArr){
+      const set = new Set((selectedArr||[]).map(String));
+      return ROLE_OPTIONS.map(r => `
+        <label class="inline-flex items-center gap-2 mr-4 mb-2">
+          <input type="checkbox" name="proj-role" value="${escapeHtml(r)}" ${set.has(r)?"checked":""}>
+          <span class="text-sm">${escapeHtml(r)}</span>
+        </label>
+      `).join("");
+    }
     function isoToLocale(s){
       if(!s) return "";
       try{ return new Date(s).toLocaleString(); }catch{ return s; }
     }
-    function overlapsRange(start, end, s, e){
-      if(!start && !end) return false;
-      const aStart = start || end; const aEnd = end || start;
-      const bStart = s || e; const bEnd = e || s;
-      if(!bStart && !bEnd) return true;
-      if(!aStart || !aEnd || !bStart || !bEnd) return false;
-      return (aStart <= bEnd) && (bStart <= aEnd);
-    }
-    function inRange(d, s, e){ if(!d) return false; if(s && d < s) return false; if(e && d > e) return false; return true; }
     function arrayToCsv(headers, rows){
       const esc = (val)=>{ const s = (val===undefined || val===null) ? "" : String(val);
         const needQuote = /[",\r\n]/.test(s); const q = s.replace(/"/g, '""'); return needQuote ? `"${q}"` : q; };
@@ -299,42 +304,31 @@
       URL.revokeObjectURL(url);
     }
 
+    // Teams 通知（可略）
     const IS_PAGES = location.hostname.endsWith(".github.io");
     async function sendTeamsNotification(title,text,color="0078D4"){
       if(IS_PAGES) return;
       try{
-        const resp = await fetch("/notify",{
-          method:"POST",
-          headers:{"Content-Type":"application/json"},
-          body:JSON.stringify({title,text,themeColor:color})
-        });
+        const resp = await fetch("/notify",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({title,text,themeColor:color})});
         if(!resp.ok){ console.warn("notify failed", resp.status, await resp.text()); }
       }catch(e){ console.warn("notify error", e); }
     }
 
-    // SharePoint 備份（非阻斷）
+    // SharePoint 備份：新增專案後呼叫（非阻斷）
     async function backupProjectToSharePoint(p){
       if(!SHAREPOINT_FLOW_URL || /REPLACE/.test(SHAREPOINT_FLOW_URL)) return;
       const body = {
         id: p.id, title: p.title, manager: p.manager,
         personnelBudget: n(p.personnelBudget), operatingBudget: n(p.operatingBudget), equipmentBudget: n(p.equipmentBudget),
         budget: n(p.budget), progress: n(p.progress), status: String(p.status||""),
-        reporterId: currentUserId,
-        createdAt: new Date().toISOString()
+        reporterId: currentUserId, createdAt: new Date().toISOString()
       };
       try{
-        await fetch(SHAREPOINT_FLOW_URL, {
-          method: "POST",
-          headers: { "Content-Type": "text/plain;charset=utf-8" },
-          mode: "no-cors",
-          body: JSON.stringify(body)
-        });
-      }catch(e){
-        console.warn("SharePoint backup failed:", e);
-      }
+        await fetch(SHAREPOINT_FLOW_URL,{ method:"POST", headers:{ "Content-Type":"text/plain;charset=utf-8" }, mode:"no-cors", body: JSON.stringify(body) });
+      }catch(e){ console.warn("SharePoint backup failed:", e); }
     }
 
-    // AI 摘要（Brain）
+    // AI 摘要（Brain）— 略（保留原功能）
     async function generateAIReport(mode){
       const url = AI_SUMMARY_WEBAPP_URL;
       if(!url || /REPLACE/.test(url)) { showModal("未設定 AI 端點", "請先部署 AI Web App URL 後再使用。"); return; }
@@ -353,16 +347,18 @@
       }
 
       const ps = projects.map(p=>({ id:p.id, title:p.title||"", manager:p.manager||"", budget:n(p.budget), progress:n(p.progress), status:p.status||"" }));
-      const ts = tasks.filter(t=> inRange(t.dueDate||"", start, end)).map(t=>({
-        id:t.id, projectId:t.projectId||"", taskName:t.taskName||"", assignee:(projects.find(p=>p.id===t.projectId)?.manager||""), projectManager:t.projectManager||"", dueDate:t.dueDate||"", status:t.status||""
+      const ts = tasks.filter(t=> (t.dueDate||"")>=start && (t.dueDate||"")<=end).map(t=>({
+        id:t.id, projectId:t.projectId||"", taskName:t.taskName||"",
+        assignee: (projects.find(p=>p.id===t.projectId)?.manager || ""), // 負責人=專案管理人
+        projectManager: t.projectManager||"", dueDate:t.dueDate||"", status:t.status||""
       }));
-      const es = events.filter(ev=> overlapsRange(ev.startDate||"", ev.endDate||ev.startDate||"", start, end)).map(ev=>({
-        id:ev.id, projectId:ev.projectId||"", title:ev.title||"", assignee:ev.assignee||"", startDate:ev.startDate||ev.date||"", endDate:ev.endDate||ev.startDate||ev.date||""
-      }));
-
-      const payload = { action:"ai_summary", mode, start, end, projects:ps, tasks:ts, events:es };
+      const es = events.filter(ev=>{
+        const s = ev.startDate || ev.date || ""; const e = ev.endDate || ev.startDate || ev.date || s;
+        return (!start||s<=end)&&(!end||e>=start);
+      }).map(ev=>({ id:ev.id, projectId:ev.projectId||"", title:ev.title||"", assignee:ev.assignee||"", startDate:ev.startDate||ev.date||"", endDate:ev.endDate||ev.startDate||ev.date||"" }));
 
       try{
+        const payload = { action:"ai_summary", mode, start, end, projects:ps, tasks:ts, events:es };
         const resp = await fetch(url, { method:"POST", headers:{ "Content-Type":"text/plain;charset=utf-8" }, body: JSON.stringify(payload) });
         const data = await resp.json().catch(()=> ({}));
         const md = data?.summary || data?.text || "(無法產生報導)";
@@ -372,14 +368,11 @@
           dl.onclick = ()=>{
             const blob = new Blob([md], { type: "text/markdown;charset=utf-8" });
             const u = URL.createObjectURL(blob);
-            const a = document.createElement("a");
-            a.href = u; a.download = `project_report_${mode}_${start}_${end}.md`;
-            a.click(); URL.revokeObjectURL(u);
+            const a = document.createElement("a"); a.href = u; a.download = `project_report_${mode}_${start}_${end}.md`; a.click(); URL.revokeObjectURL(u);
           };
         }
       }catch(e){
-        console.error(e);
-        if (box) box.textContent = "AI 產生失敗：" + (e?.message||String(e));
+        console.error(e); if (box) box.textContent = "AI 產生失敗：" + (e?.message||String(e));
       }
     }
 
@@ -396,26 +389,74 @@
 
       await setPersistence(auth, browserLocalPersistence);
 
+      document.getElementById("btn-email-signin")?.addEventListener("click", signInWithEmailPassword);
+      document.getElementById("btn-email-signup")?.addEventListener("click", signUpWithEmailPassword);
+
       onAuthStateChanged(auth, async (user)=>{
         isAuthReady = true;
         if(user){
           currentUserId = user.uid;
-          userProfile = {
-            displayName: user.displayName || "",
-            email: user.email || "",
-            photoURL: user.photoURL || ""
-          };
+          userProfile = { displayName: user.displayName || "", email: user.email || "", photoURL: user.photoURL || "" };
           updateUserUI();
           showAppShell();
           if(!listenersStarted) startRealtimeListeners();
         }else{
-          currentUserId = "";
-          userProfile = { displayName:"", email:"", photoURL:"" };
-          showLanding();
+          currentUserId = ""; userProfile = { displayName:"", email:"", photoURL:"" }; showLanding();
         }
       });
     }
 
+    // 登入/註冊
+    function setAuthLoading(loading) {
+      const loadingEl = document.getElementById("landing-loading");
+      const btnIn = document.getElementById("btn-email-signin");
+      const btnUp = document.getElementById("btn-email-signup");
+      if (loadingEl) loadingEl.classList.toggle("hidden", !loading);
+      if (btnIn) btnIn.disabled = loading;
+      if (btnUp) btnUp.disabled = loading;
+    }
+    function showAuthError(msg) {
+      const box = document.getElementById("auth-error");
+      if (box) box.textContent = msg || "";
+    }
+    async function signUpWithEmailPassword() {
+      const email = (document.getElementById("auth-email")?.value || "").trim();
+      const password = document.getElementById("auth-password")?.value || "";
+      showAuthError("");
+      if (!email || !password) { showAuthError("請輸入 email 與密碼"); return; }
+      if (password.length < 6) { showAuthError("密碼需至少 6 個字元"); return; }
+      try {
+        setAuthLoading(true);
+        await createUserWithEmailAndPassword(auth, email, password);
+        showModal("註冊成功", "已成功建立帳號並登入。");
+      } catch (e) {
+        console.error(e);
+        if ((e?.code || "").includes("email-already-in-use")) showAuthError("此 Email 已被註冊，請直接登入");
+        else if ((e?.code || "").includes("invalid-email")) showAuthError("Email 格式不正確");
+        else if ((e?.code || "").includes("weak-password")) showAuthError("密碼強度不足，請至少 6 個字元");
+        else showAuthError(`註冊失敗：${e?.message || String(e)}`);
+      } finally { setAuthLoading(false); }
+    }
+    async function signInWithEmailPassword() {
+      const email = (document.getElementById("auth-email")?.value || "").trim();
+      const password = document.getElementById("auth-password")?.value || "";
+      showAuthError("");
+      if (!email || !password) { showAuthError("請輸入 email 與密碼"); return; }
+      try {
+        setAuthLoading(true);
+        await signInWithEmailAndPassword(auth, email, password);
+        showModal("登入成功", "歡迎回來！正在載入您的專案資料...");
+      } catch (e) {
+        console.error(e);
+        if ((e?.code || "").includes("user-not-found")) showAuthError("找不到此帳號，請先註冊");
+        else if ((e?.code || "").includes("wrong-password")) showAuthError("密碼錯誤");
+        else if ((e?.code || "").includes("invalid-credential")) showAuthError("帳號或密碼不正確");
+        else if ((e?.code || "").includes("invalid-email")) showAuthError("Email 格式不正確");
+        else showAuthError(`登入失敗：${e?.message || String(e)}`);
+      } finally { setAuthLoading(false); }
+    }
+
+    // 顯示切換
     function updateUserUI(){
       const name = userProfile.displayName || userProfile.email || "使用者";
       const email = userProfile.email || "";
@@ -458,114 +499,21 @@
 
       if(window.lucide?.createIcons) lucide.createIcons();
     }
-
     function showLanding(){
-      const landing = document.getElementById("landing");
-      const appShell = document.getElementById("app-shell");
-      if(landing) landing.classList.remove("hidden");
-      if(appShell) appShell.classList.add("hidden");
+      document.getElementById("landing")?.classList.remove("hidden");
+      document.getElementById("app-shell")?.classList.add("hidden");
       if(window.lucide?.createIcons) lucide.createIcons();
-      authButtonsWired = false;
-      wireEmailAuthButtons();
     }
-
     function showAppShell(){
-      const landing = document.getElementById("landing");
-      const appShell = document.getElementById("app-shell");
-      if(landing) landing.classList.add("hidden");
-      if(appShell) appShell.classList.remove("hidden");
+      document.getElementById("landing")?.classList.add("hidden");
+      document.getElementById("app-shell")?.classList.remove("hidden");
       if(currentView!=="dashboard") currentView = "dashboard";
       renderDashboard();
       if(window.lucide?.createIcons) lucide.createIcons();
     }
 
-    // 登入/註冊
-    function setAuthLoading(loading) {
-      const loadingEl = document.getElementById("landing-loading");
-      const btnIn = document.getElementById("btn-email-signin");
-      const btnUp = document.getElementById("btn-email-signup");
-      if (loadingEl) loadingEl.classList.toggle("hidden", !loading);
-      if (btnIn) btnIn.disabled = loading;
-      if (btnUp) btnUp.disabled = loading;
-    }
-    function showAuthError(msg) {
-      const box = document.getElementById("auth-error");
-      if (box) box.textContent = msg || "";
-    }
-    window.signUpWithEmailPassword = async function() {
-      const email = (document.getElementById("auth-email")?.value || "").trim();
-      const password = document.getElementById("auth-password")?.value || "";
-      showAuthError("");
-      if (!email || !password) { showAuthError("請輸入 email 與密碼"); return; }
-      if (password.length < 6) { showAuthError("密碼需至少 6 個字元"); return; }
-      try {
-        setAuthLoading(true);
-        await createUserWithEmailAndPassword(auth, email, password);
-        showModal("註冊成功", "已成功建立帳號並登入。");
-      } catch (e) {
-        console.error(e);
-        if ((e?.code || "").includes("email-already-in-use")) {
-          showAuthError("此 Email 已被註冊，請直接登入");
-        } else if ((e?.code || "").includes("invalid-email")) {
-          showAuthError("Email 格式不正確");
-        } else if ((e?.code || "").includes("weak-password")) {
-          showAuthError("密碼強度不足，請至少 6 個字元");
-        } else {
-          showAuthError(`註冊失敗：${e?.message || String(e)}`);
-        }
-      } finally {
-        setAuthLoading(false);
-      }
-    };
-    window.signInWithEmailPassword = async function() {
-      const email = (document.getElementById("auth-email")?.value || "").trim();
-      const password = document.getElementById("auth-password")?.value || "";
-      showAuthError("");
-      if (!email || !password) { showAuthError("請輸入 email 與密碼"); return; }
-      try {
-        setAuthLoading(true);
-        await signInWithEmailAndPassword(auth, email, password);
-        showModal("登入成功", "歡迎回來！正在載入您的專案資料...");
-      } catch (e) {
-        console.error(e);
-        if ((e?.code || "").includes("user-not-found")) {
-          showAuthError("找不到此帳號，請先註冊");
-        } else if ((e?.code || "").includes("wrong-password")) {
-          showAuthError("密碼錯誤");
-        } else if ((e?.code || "").includes("invalid-credential")) {
-          showAuthError("帳號或密碼不正確");
-        } else if ((e?.code || "").includes("invalid-email")) {
-          showAuthError("Email 格式不正確");
-        } else {
-          showAuthError(`登入失敗：${e?.message || String(e)}`);
-        }
-      } finally {
-        setAuthLoading(false);
-      }
-    };
-
-    // 綁定按鈕
-    let authButtonsWired = false;
-    function wireEmailAuthButtons(){
-      if (authButtonsWired) return;
-      const signInBtn = document.getElementById("btn-email-signin");
-      const signUpBtn = document.getElementById("btn-email-signup");
-      if (signInBtn) {
-        signInBtn.addEventListener("click", (e)=>{ e.preventDefault(); window.signInWithEmailPassword(); });
-      }
-      if (signUpBtn) {
-        signUpBtn.addEventListener("click", (e)=>{ e.preventDefault(); window.signUpWithEmailPassword(); });
-      }
-      authButtonsWired = true;
-    }
-
     // 登出
-    window.appSignOut = async function(){
-      try{ await signOut(auth); }catch(e){ console.error(e); }
-    };
-
-    // 權限
-    function isAuthorized(){ return !!currentUserId; }
+    window.appSignOut = async function(){ try{ await signOut(auth); }catch(e){ console.error(e); } };
 
     // 側欄切換
     window.toggleSidebar = function(){
@@ -627,7 +575,6 @@
       else if(view==="creation"){ renderProjectCreation(); }
       else if(view==="details"){
         selectedProjectId = (typeof arg === "string" && arg) ? arg : (projects[0]?.id || null);
-        // 初次進入或由外部指定專案時，主持人跟隨該專案
         const proj = projects.find(p=>p.id===selectedProjectId);
         detailsFilterPM = proj?.manager || "";
         renderProjectDetails(selectedProjectId);
@@ -653,26 +600,23 @@
       if(currentView==="community") renderCommunity();
     }
 
-    // 儀表板（含迷你行事曆）
+    // 儀表板
     function renderDashboard(){
       const c = document.getElementById("main-content");
       if(!c) return;
 
-      if (miniCalendarInstance) {
-        try { miniCalendarInstance.destroy(); } catch(_) {}
-        miniCalendarInstance = null;
-      }
+      if (miniCalendarInstance) { try { miniCalendarInstance.destroy(); } catch(_) {} miniCalendarInstance = null; }
 
       const totalProjects = projects.length;
       const completed = projects.filter(p => (n(p.progress)) >= 95).length;
       const totalBudget = projects.reduce((s,p)=>s+n(p.budget),0);
-      const empty = totalProjects===0;
 
       let personnelUsed = 0, operatingUsed = 0, equipmentUsed = 0;
       for(const p of projects){
-        const pu = ('personnelUsed' in p) ? n(p.personnelUsed) : n(p.personnelBudget);
-        const ou = ('operatingUsed' in p) ? n(p.operatingUsed) : n(p.operatingBudget);
-        const eu = ('equipmentUsed' in p) ? n(p.equipmentUsed) : n(p.equipmentBudget);
+        // 若有 Used 欄位就用 Used，否則用 Budget（兼容舊資料）
+        const pu = ('personnelUsed' in p) ? n(p.personnelUsed) : 0;
+        const ou = ('operatingUsed' in p) ? n(p.operatingUsed) : 0;
+        const eu = ('equipmentUsed' in p) ? n(p.equipmentUsed) : 0;
         personnelUsed += pu; operatingUsed += ou; equipmentUsed += eu;
       }
       const pc = n(budgetCaps.personnelCap), oc = n(budgetCaps.operatingCap), ec = n(budgetCaps.equipmentCap);
@@ -713,19 +657,19 @@
 
         <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
           <div class="project-card bg-white p-6 rounded-xl shadow-lg border-t-4 border-primary-blue">
-            <div class="flex items-center justify-between mb-2"><div class="font-semibold text-gray-800">人事費總預算</div><div class="text-sm text-gray-500">${fmtMoney(pc)}</div></div>
+            <div class="flex items-center justify-between mb-2"><div class="font-semibold text-gray-800">人事費已用</div><div class="text-sm text-gray-500">${fmtMoney(personnelUsed)}</div></div>
             <div class="w-full bg-gray-200 rounded-full h-3"><div class="progress-bar h-3 rounded-full ${barClass(pRate, pRemain)}" style="width:${(pRate*100).toFixed(0)}%"></div></div>
-            <div class="mt-2 text-sm text-gray-700 flex justify-between"><span>已用：<strong>${fmtMoney(personnelUsed)}</strong>（${(pRate*100).toFixed(0)}%）</span><span>${pRemain>=0 ? `餘額：${fmtMoney(pRemain)}` : `超支：${fmtMoney(-pRemain)}`}</span></div>
+            <div class="mt-2 text-sm text-gray-700 flex justify-between"><span>占上限 ${(pRate*100).toFixed(0)}%</span><span>${pRemain>=0 ? `剩餘：${fmtMoney(pRemain)}` : `超支：${fmtMoney(-pRemain)}`}</span></div>
           </div>
           <div class="project-card bg-white p-6 rounded-xl shadow-lg border-t-4 border-primary-blue">
-            <div class="flex items-center justify-between mb-2"><div class="font-semibold text-gray-800">業務費總預算</div><div class="text-sm text-gray-500">${fmtMoney(oc)}</div></div>
+            <div class="flex items-center justify-between mb-2"><div class="font-semibold text-gray-800">業務費已用</div><div class="text-sm text-gray-500">${fmtMoney(operatingUsed)}</div></div>
             <div class="w-full bg-gray-200 rounded-full h-3"><div class="progress-bar h-3 rounded-full ${barClass(oRate, oRemain)}" style="width:${(oRate*100).toFixed(0)}%"></div></div>
-            <div class="mt-2 text-sm text-gray-700 flex justify-between"><span>已用：<strong>${fmtMoney(operatingUsed)}</strong>（${(oRate*100).toFixed(0)}%）</span><span>${oRemain>=0 ? `餘額：${fmtMoney(oRemain)}` : `超支：${fmtMoney(-oRemain)}`}</span></div>
+            <div class="mt-2 text-sm text-gray-700 flex justify-between"><span>占上限 ${(oRate*100).toFixed(0)}%</span><span>${oRemain>=0 ? `剩餘：${fmtMoney(oRemain)}` : `超支：${fmtMoney(-oRemain)}`}</span></div>
           </div>
           <div class="project-card bg-white p-6 rounded-xl shadow-lg border-t-4 border-primary-blue">
-            <div class="flex items-center justify-between mb-2"><div class="font-semibold text-gray-800">設備費總預算</div><div class="text-sm text-gray-500">${fmtMoney(ec)}</div></div>
+            <div class="flex items-center justify-between mb-2"><div class="font-semibold text-gray-800">設備費已用</div><div class="text-sm text-gray-500">${fmtMoney(equipmentUsed)}</div></div>
             <div class="w-full bg-gray-200 rounded-full h-3"><div class="progress-bar h-3 rounded-full ${barClass(eRate, eRemain)}" style="width:${(eRate*100).toFixed(0)}%"></div></div>
-            <div class="mt-2 text-sm text-gray-700 flex justify-between"><span>已用：<strong>${fmtMoney(equipmentUsed)}</strong>（${(eRate*100).toFixed(0)}%）</span><span>${eRemain>=0 ? `餘額：${fmtMoney(eRemain)}` : `超支：${fmtMoney(-eRemain)}`}</span></div>
+            <div class="mt-2 text-sm text-gray-700 flex justify-between"><span>占上限 ${(eRate*100).toFixed(0)}%</span><span>${eRemain>=0 ? `剩餘：${fmtMoney(eRemain)}` : `超支：${fmtMoney(-eRemain)}`}</span></div>
           </div>
         </div>
 
@@ -744,7 +688,7 @@
         <div class="bg-white p-6 rounded-xl shadow-lg mt-8">
           <h3 class="text-xl font-semibold text-gray-800 mb-4">所有專案概覽</h3>
           ${
-            empty ? `
+            totalProjects===0 ? `
             <div class="text-center py-10">
               <i data-lucide="alert-triangle" class="w-10 h-10 text-yellow-500 mx-auto mb-4"></i>
               <p class="text-lg text-gray-600">目前沒有專案資料。</p>
@@ -771,7 +715,7 @@
                     return `
                     <tr>
                       <td class="px-4 py-4 whitespace-nowrap text-sm font-medium text-primary-blue hover:underline cursor-pointer" onclick="setView('details','${escapeHtml(p.id)}')">
-                        <div class="text-xs text-gray-500">${escapeHtml(p.id)}</div>${escapeHtml(p.title)}
+                        <div class="text-xs text-gray-500">${escapeHtml(p.id)}</div>${escapeHtml(p.title||"")}
                       </td>
                       <td class="px-4 py-4 whitespace-nowrap text-sm text-gray-800">${escapeHtml(p.manager||"")}</td>
                       <td class="px-4 py-4 whitespace-nowrap text-sm">
@@ -792,7 +736,7 @@
       `;
       if(window.lucide?.createIcons) lucide.createIcons();
 
-      // 迷你行事曆（中文文字按鈕）
+      // 迷你行事曆
       const calEl = document.getElementById("mini-calendar");
       if (calEl && window.FullCalendar?.Calendar) {
         const evs = (events||[]).map(ev => ({
@@ -807,27 +751,21 @@
           initialView: "dayGridMonth",
           height: "auto",
           headerToolbar: { left: "prev,next today", center: "title", right: "" },
-          events: evs,
-          locale: "zh-tw",
-          buttonIcons: false,
-          buttonText: { today: "本月", prev: "上個月", next: "下個月" },
-          firstDay: 1
+          events: evs, locale: "zh-tw", buttonIcons: false,
+          buttonText: { today: "本月", prev: "上個月", next: "下個月" }, firstDay: 1
         });
         miniCalendarInstance.render();
       }
     }
 
-    // 新增專案（含 SharePoint 備份）
+    // 新增專案：加入 needIT / requiredRoles；強化錯誤顯示與成功驗證
     function isValidProjectId(id){ return /^[A-Za-z0-9_-]{3,64}$/.test(id||""); }
     async function handleNewProjectSubmission(e){
       e.preventDefault();
       const feedback = document.getElementById("project-form-feedback");
-      if(!isAuthorized()){
-        feedback.className="mt-4 text-sm text-red-600";
-        feedback.textContent="請先登入後再新增專案。";
-        showModal("請先登入","請先登入後再新增專案。");
-        return;
-      }
+      feedback.className = "text-sm";
+      feedback.textContent = "";
+      if(!currentUserId){ feedback.className="text-sm text-red-600"; feedback.textContent="請先登入後再新增專案。"; showModal("請先登入","請先登入後再新增專案。"); return; }
 
       const projectId = document.getElementById("proj-id").value.trim();
       const title = document.getElementById("proj-title").value.trim();
@@ -841,54 +779,65 @@
       const budget = n(document.getElementById("proj-budget").value);
       const progress = Math.max(0, Math.min(100, n(document.getElementById("proj-progress").value)));
       const status = document.getElementById("proj-status").value.trim();
+      const needIT = !!document.getElementById("proj-needit").checked;
+      const requiredRoles = Array.from(document.querySelectorAll("input[name='proj-role']:checked")).map(el=>el.value);
 
       if(!isValidProjectId(projectId)){
-        feedback.className="mt-4 text-sm text-red-600"; feedback.textContent="格式錯誤：專案編號僅能包含英數字、底線、連字號，長度 3–64。"; return;
+        feedback.className="mt-2 text-sm text-red-600"; feedback.textContent="格式錯誤：專案編號僅能包含英數字、底線、連字號，長度 3–64。"; return;
       }
       if(projects.some(p=>p.id===projectId)){
-        feedback.className="mt-4 text-sm text-red-600"; feedback.textContent=`錯誤：專案編號 ${projectId} 已存在！`; return;
+        feedback.className="mt-2 text-sm text-red-600"; feedback.textContent=`錯誤：專案編號 ${projectId} 已存在！`; return;
       }
       if(!title){
-        feedback.className="mt-4 text-sm text-red-600"; feedback.textContent="請輸入專案名稱。"; return;
+        feedback.className="mt-2 text-sm text-red-600"; feedback.textContent="請輸入專案名稱。"; return;
       }
 
       try{
+        // 首次輸入的新主持人自動加入人員清單
         if(typedManager){
           const exists = managers.some(m => (m.name||"") === typedManager);
           if(!exists){
             await addDoc(collection(db, MANAGERS_COLLECTION_PATH), {
-              name: typedManager, email:"", title:"",
-              createdAt: serverTimestamp(), reporterId: currentUserId
+              name: typedManager, email:"", title:"", createdAt: serverTimestamp(), reporterId: currentUserId
             });
           }
         }
 
-        await setDoc(doc(db, PROJECTS_COLLECTION_PATH, projectId), {
+        const payload = {
           id: projectId, title, manager,
           budget, personnelBudget, operatingBudget, equipmentBudget,
+          // 新增可更新的使用金額欄位，預設 0
+          personnelUsed: 0, operatingUsed: 0, equipmentUsed: 0,
+          // 需求設定
+          needIT, requiredRoles,
           progress, status, proposer: manager, manpower: 0, type:"手動輸入",
           createdAt: serverTimestamp(), reporterId: currentUserId
-        });
+        };
 
-        // 新增後備份到 SharePoint（Flow）
-        backupProjectToSharePoint({
-          id: projectId, title, manager,
-          budget, personnelBudget, operatingBudget, equipmentBudget,
-          progress, status
-        });
+        await setDoc(doc(db, PROJECTS_COLLECTION_PATH, projectId), payload);
+
+        // 回讀驗證（避免你感覺「沒寫入」）
+        const check = await getDoc(doc(db, PROJECTS_COLLECTION_PATH, projectId));
+        if(!check.exists()){
+          throw new Error("寫入後驗證失敗：資料庫未讀到新專案。請檢查 Firestore 規則或網路。");
+        }
+
+        // SharePoint 備份（非阻斷）
+        backupProjectToSharePoint(payload);
 
         showModal("成功","專案新增成功！已同步備份（SharePoint Flow）。");
-        feedback.className="mt-4 text-sm text-green-600"; feedback.textContent="專案新增成功。";
-        document.getElementById("new-project-form").reset();
+        feedback.className="mt-2 text-sm text-green-600"; feedback.textContent="專案新增成功。";
+        (document.getElementById("new-project-form"))?.reset();
         document.getElementById("proj-budget").value = 0;
+
       }catch(err){
         console.error(err);
-        feedback.className="mt-4 text-sm text-red-600";
-        feedback.textContent=`專案新增失敗：${err?.message || String(err)}`;
+        feedback.className="mt-2 text-sm text-red-600";
+        feedback.textContent = `專案新增失敗：${err?.message || String(err)}（若持續發生，請到 Firebase Console 檢查 Firestore 規則權限）`;
       }
     }
 
-    // 新增/編輯專案頁
+    // 新增/編輯專案頁（含 needIT / requiredRoles）
     function renderProjectCreation(){
       const c = document.getElementById("main-content");
       if(!c) return;
@@ -902,40 +851,40 @@
           <form id="new-project-form" class="space-y-4">
             <div>
               <label class="block text-sm font-medium text-gray-700">專案編號（唯一）</label>
-              <input type="text" id="proj-id" required class="mt-1 block w-full rounded-md border-gray-300 p-2 border" placeholder="例如 P-2025-001（允許英數字、_、-）"/>
+              <input type="text" id="proj-id" required class="mt-1 block w-full rounded-md border-gray-300 p-2 border" placeholder="例如 P-2025-001"/>
             </div>
             <div>
               <label class="block text-sm font-medium text-gray-700">專案名稱</label>
               <input type="text" id="proj-title" required class="mt-1 block w-full rounded-md border-gray-300 p-2 border"/>
             </div>
             <div>
-              <label class="block text-sm font-medium text-gray-700">專案管理人</label>
+              <label class="block text-sm font-medium text-gray-700">專案管理人（= 任務負責人）</label>
               <select id="proj-manager" required class="mt-1 block w-full rounded-md border-gray-300 p-2 border">
                 ${ managerOptionsHtml() }
               </select>
-              <label class="block text-xs font-medium text-gray-500 mt-2">新增主持人（選填，若填寫則優先採用此值並加入人員名單）</label>
+              <label class="block text-xs font-medium text-gray-500 mt-2">新增主持人（選填；若填寫則優先採用此值並加入人員名單）</label>
               <input type="text" id="proj-manager-new" placeholder="輸入主持人姓名" class="mt-1 block w-full rounded-md border-gray-300 p-2 border"/>
             </div>
 
             <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div>
-                <label class="block text-sm font-medium text-gray-700">人事費 (NTD)</label>
+                <label class="block text-sm font-medium text-gray-700">人事費預算 (NTD)</label>
                 <input type="number" id="proj-personnel" min="0" value="0" class="mt-1 block w-full rounded-md border-gray-300 p-2 border"/>
               </div>
               <div>
-                <label class="block text-sm font-medium text-gray-700">業務費 (NTD)</label>
+                <label class="block text-sm font-medium text-gray-700">業務費預算 (NTD)</label>
                 <input type="number" id="proj-operating" min="0" value="0" class="mt-1 block w-full rounded-md border-gray-300 p-2 border"/>
               </div>
               <div>
-                <label class="block text-sm font-medium text-gray-700">設備費 (NTD)</label>
+                <label class="block text-sm font-medium text-gray-700">設備費預算 (NTD)</label>
                 <input type="number" id="proj-equipment" min="0" value="0" class="mt-1 block w-full rounded-md border-gray-300 p-2 border"/>
               </div>
             </div>
 
             <div>
-              <label class="block text-sm font-medium text-gray-700">預算概算 (自動合計)</label>
+              <label class="block text-sm font-medium text-gray-700">預算概算（自動合計）</label>
               <input type="number" id="proj-budget" min="0" value="0" class="mt-1 block w-full rounded-md border-gray-300 p-2 border bg-gray-100" readonly/>
-              <p class="text-xs text-gray-500 mt-1">預算概算 = 人事費 + 業務費 + 設備費</p>
+              <p class="text-xs text-gray-500 mt-1">預算概算 = 人事 + 業務 + 設備</p>
             </div>
 
             <div class="grid grid-cols-2 gap-4">
@@ -946,6 +895,22 @@
               <div>
                 <label class="block text-sm font-medium text-gray-700">初始狀態描述</label>
                 <input type="text" id="proj-status" class="mt-1 block w-full rounded-md border-gray-300 p-2 border" placeholder="例如：啟動、規劃中、進行中"/>
+              </div>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div class="md:col-span-1">
+                <label class="block text-sm font-medium text-gray-700">是否需要資訊人員</label>
+                <label class="inline-flex items-center gap-2 mt-2">
+                  <input type="checkbox" id="proj-needit">
+                  <span class="text-sm">需要資訊人員</span>
+                </label>
+              </div>
+              <div class="md:col-span-2">
+                <label class="block text-sm font-medium text-gray-700">需要的人力（可複選）</label>
+                <div id="proj-roles-box" class="mt-2 flex flex-wrap">
+                  ${ rolesCheckboxesHtml([]) }
+                </div>
               </div>
             </div>
 
@@ -976,12 +941,10 @@
     function renderReport(){
       const c = document.getElementById("main-content");
       if(!c) return;
-
       c.innerHTML = `
         <h2 class="text-3xl font-bold text-gray-800 mb-6 border-b pb-2 flex items-center">
           <i data-lucide="brain" class="w-7 h-7 mr-3 text-primary-blue"></i> Brain - AI 摘要
         </h2>
-
         <div class="project-card bg-white p-6 rounded-xl shadow-lg">
           <p class="text-sm text-gray-500 mb-3">依據當月/當週的專案、任務與行事曆資料，自動生成摘要報告。</p>
           <div class="flex flex-wrap gap-3 mb-3">
@@ -997,15 +960,11 @@
       if(window.lucide?.createIcons) lucide.createIcons();
     }
 
-    // 行事曆（中文文字按鈕 + 新增事件）
+    // 行事曆
     function renderCalendar(){
       const c = document.getElementById("main-content");
       if(!c) return;
-
-      if (calendarInstance) {
-        try { calendarInstance.destroy(); } catch(_) {}
-        calendarInstance = null;
-      }
+      if (calendarInstance) { try { calendarInstance.destroy(); } catch(_) {} calendarInstance = null; }
 
       const projectOptions = projects.length>0
         ? projects.map(p=>`<option value="${escapeHtml(p.id)}">${escapeHtml(p.id)} - ${escapeHtml(p.title||"")}</option>`).join("")
@@ -1015,7 +974,6 @@
         <h2 class="text-3xl font-bold text-gray-800 mb-6 border-b pb-2 flex items-center">
           <i data-lucide="calendar" class="w-7 h-7 mr-3 text-primary-blue"></i> 行事曆
         </h2>
-
         <div class="grid grid-cols-1 lg:grid-cols-4 gap-6">
           <div class="lg:col-span-1 project-card bg-white p-5 rounded-xl shadow">
             <h3 class="text-lg font-semibold text-gray-800 mb-3 flex items-center">
@@ -1051,7 +1009,6 @@
             </form>
             <p class="text-xs text-gray-500 mt-3">提示：點選右側行事曆日期可自動帶入開始/結束日。</p>
           </div>
-
           <div class="lg:col-span-3 project-card bg-white p-5 rounded-xl shadow">
             <div id="full-calendar"></div>
           </div>
@@ -1073,17 +1030,9 @@
           initialView: "dayGridMonth",
           height: "auto",
           headerToolbar: { left: "prev,next today", center: "title", right: "dayGridMonth,dayGridWeek" },
-          events: evs,
-          locale: "zh-tw",
-          buttonIcons: false,
-          buttonText: { today: "本月", prev: "上個月", next: "下個月" },
-          firstDay: 1,
-          dateClick: (info)=>{
-            const s = document.getElementById("ev-start");
-            const e = document.getElementById("ev-end");
-            if(s) s.value = info.dateStr;
-            if(e) e.value = info.dateStr;
-          }
+          events: evs, locale: "zh-tw", buttonIcons: false,
+          buttonText: { today: "本月", prev: "上個月", next: "下個月" }, firstDay: 1,
+          dateClick: (info)=>{ const s = document.getElementById("ev-start"); const e = document.getElementById("ev-end"); if(s) s.value = info.dateStr; if(e) e.value = info.dateStr; }
         });
         calendarInstance.render();
       }
@@ -1091,41 +1040,24 @@
       document.getElementById("new-event-form")?.addEventListener("submit", async (e)=>{
         e.preventDefault();
         const feedback = document.getElementById("event-form-feedback");
-        if(!isAuthorized()){
-          feedback.className="text-sm mt-2 text-red-600";
-          feedback.textContent="請先登入再新增事件。";
-          return;
-        }
+        if(!currentUserId){ feedback.className="text-sm mt-2 text-red-600"; feedback.textContent="請先登入再新增事件。"; return; }
         const title = document.getElementById("ev-title").value.trim();
         const projectId = document.getElementById("ev-project").value || "";
         const assignee = document.getElementById("ev-assignee").value || "";
         const startDate = document.getElementById("ev-start").value;
         const endDate = document.getElementById("ev-end").value || startDate;
-
-        if(!title || !startDate){
-          feedback.className="text-sm mt-2 text-red-600";
-          feedback.textContent="請填寫標題與開始日期。";
-          return;
-        }
-
+        if(!title || !startDate){ feedback.className="text-sm mt-2 text-red-600"; feedback.textContent="請填寫標題與開始日期。"; return; }
         try{
-          const ref = await addDoc(collection(db, EVENTS_COLLECTION_PATH), {
-            title, projectId, assignee, startDate, endDate,
-            createdAt: serverTimestamp(), reporterId: currentUserId
-          });
-          feedback.className="text-sm mt-2 text-secondary-green";
-          feedback.textContent=`新增成功 (ID: ${ref.id})。`;
-          const form = document.getElementById("new-event-form");
-          if (form && typeof form.reset === "function") form.reset();
+          await addDoc(collection(db, EVENTS_COLLECTION_PATH), { title, projectId, assignee, startDate, endDate, createdAt: serverTimestamp(), reporterId: currentUserId });
+          feedback.className="text-sm mt-2 text-secondary-green"; feedback.textContent=`新增成功。`;
+          (document.getElementById("new-event-form"))?.reset();
         }catch(err){
-          console.error(err);
-          feedback.className="text-sm mt-2 text-red-600";
-          feedback.textContent="新增失敗：資料庫錯誤。";
+          console.error(err); feedback.className="text-sm mt-2 text-red-600"; feedback.textContent="新增失敗：資料庫錯誤。";
         }
       });
     }
 
-    // Planner（任務管理）—負責人=專案管理人（唯讀）、主持人=自行輸入
+    // Planner（負責人=專案管理人、主持人=自行輸入）
     function renderTaskManagement(){
       const c = document.getElementById("main-content");
       if(!c) return;
@@ -1134,18 +1066,12 @@
         ? `<option value="">選擇專案（可空）</option>` + projects.map(p=>`<option value="${escapeHtml(p.id)}">${escapeHtml(p.id)} - ${escapeHtml(p.title||"")}</option>`).join("")
         : '<option value="">尚無專案</option>';
 
-      // 以「專案管理人」作為任務的負責人來源
       const computedAssignee = (t)=> (projects.find(p=>p.id===t.projectId)?.manager || "");
 
-      // 供篩選使用：負責人清單 = 專案管理人
       const assigneeSet = new Set(tasks.map(t => computedAssignee(t).trim()).filter(Boolean));
       const assigneeOptions = ['全部負責人', ...Array.from(assigneeSet).filter(Boolean)];
-
-      // 主持人清單 = 任務上的 projectManager 文字
       const pmSet = new Set(tasks.map(t => (t.projectManager||"").trim()).filter(Boolean).concat(projects.map(p=>p.manager||"")));
       const pmOptions = ['全部主持人', ...Array.from(pmSet).filter(Boolean)];
-
-      // 狀態清單
       const statusSet = new Set(tasks.map(t => (t.status||"").trim()).filter(Boolean));
       const statusOptions = ['全部狀態', ...Array.from(statusSet).filter(Boolean)];
 
@@ -1242,7 +1168,6 @@
       `;
       if(window.lucide?.createIcons) lucide.createIcons();
 
-      // 新增任務：依專案自動帶出負責人 = 專案管理人
       function updateAssigneeByProject(){
         const pid = document.getElementById("task-project").value || "";
         const pm = projects.find(p=>p.id===pid)?.manager || "";
@@ -1255,25 +1180,19 @@
       document.getElementById("new-task-form")?.addEventListener("submit", async (e)=>{
         e.preventDefault();
         const feedback = document.getElementById("task-form-feedback");
-        if(!isAuthorized()){ feedback.className="text-sm text-red-600"; feedback.textContent="請先登入再新增任務。"; return; }
+        if(!currentUserId){ feedback.className="text-sm text-red-600"; feedback.textContent="請先登入再新增任務。"; return; }
         const projectId = document.getElementById("task-project").value || "";
         const taskName = document.getElementById("task-name").value.trim();
-        const projectManager = document.getElementById("task-pm").value.trim(); // 主持人（自行輸入）
+        const projectManager = document.getElementById("task-pm").value.trim(); // 主持人（自填）
         const dueDate = document.getElementById("task-due").value || "";
         const status = document.getElementById("task-status").value.trim() || "未開始";
         const description = document.getElementById("task-desc").value || "";
         if(!taskName){ feedback.className="text-sm text-red-600"; feedback.textContent="請輸入任務名稱。"; return; }
-
-        // 負責人一律採用「所屬專案管理人」
-        const assignee = projects.find(p=>p.id===projectId)?.manager || "";
-
+        const assignee = projects.find(p=>p.id===projectId)?.manager || ""; // 負責人=專案管理人
         try{
-          const ref = await addDoc(collection(db, TASKS_COLLECTION_PATH), {
-            projectId, taskName, description, assignee, projectManager, dueDate, status,
-            createdAt: serverTimestamp(), reporterId: currentUserId
-          });
+          const ref = await addDoc(collection(db, TASKS_COLLECTION_PATH), { projectId, taskName, description, assignee, projectManager, dueDate, status, createdAt: serverTimestamp(), reporterId: currentUserId });
           feedback.className="text-sm text-secondary-green"; feedback.textContent=`新增成功 (ID: ${ref.id})。`;
-          (document.getElementById("new-task-form")).reset();
+          (document.getElementById("new-task-form"))?.reset();
           updateAssigneeByProject();
           renderRows();
         }catch(err){
@@ -1285,8 +1204,8 @@
       function getFilters(){
         return {
           project: document.getElementById("flt-project").value || "",
-          assignee: document.getElementById("flt-assignee").value || "", // 專案管理人
-          pm: document.getElementById("flt-pm").value || "",             // 任務上的主持人（自填）
+          assignee: document.getElementById("flt-assignee").value || "",
+          pm: document.getElementById("flt-pm").value || "",
           status: document.getElementById("flt-status").value || "",
           from: document.getElementById("flt-from").value || "",
           to: document.getElementById("flt-to").value || "",
@@ -1297,17 +1216,14 @@
         const f = getFilters();
         return list.filter(t=>{
           if(f.project && t.projectId !== f.project) return false;
-          const displayAssignee = computedAssignee(t); // 專案管理人
+          const displayAssignee = computedAssignee(t);
           if(f.assignee && displayAssignee !== f.assignee) return false;
-          const displayPm = t.projectManager || ""; // 主持人（自填）
+          const displayPm = t.projectManager || "";
           if(f.pm && displayPm !== f.pm) return false;
           if(f.status && (t.status||"") !== f.status) return false;
           if(f.from && (t.dueDate||"") < f.from) return false;
           if(f.to && (t.dueDate||"") > f.to) return false;
-          if(f.q){
-            const hay = `${t.taskName||""} ${t.description||""}`.toLowerCase();
-            if(!hay.includes(f.q)) return false;
-          }
+          if(f.q){ const hay = `${t.taskName||""} ${t.description||""}`.toLowerCase(); if(!hay.includes(f.q)) return false; }
           return true;
         });
       }
@@ -1328,8 +1244,8 @@
         const list = applyFilters(sorted);
         container.innerHTML = list.map(t=>{
           const proj = projects.find(p=>p.id===t.projectId);
-          const displayAssignee = proj?.manager || "";       // 負責人 = 專案管理人
-          const displayPm = t.projectManager || "";           // 主持人 = 任務上自填
+          const displayAssignee = proj?.manager || "";
+          const displayPm = t.projectManager || "";
           if(editingId === t.id){
             return `
               <div class="project-card bg-white p-4 rounded-xl shadow">
@@ -1404,13 +1320,9 @@
         const projectManager = document.getElementById(`ed-pm-${id}`).value; // 主持人
         const dueDate = document.getElementById(`ed-due-${id}`).value;
         const status = document.getElementById(`ed-status-${id}`).value.trim();
-        // 同步負責人 = 專案管理人（由任務所屬專案決定）
         const displayAssignee = projects.find(p=>p.id===t.projectId)?.manager || "";
         try{
-          await updateDoc(doc(db, TASKS_COLLECTION_PATH, id), {
-            taskName, description, projectManager, dueDate, status,
-            assignee: displayAssignee
-          });
+          await updateDoc(doc(db, TASKS_COLLECTION_PATH, id), { taskName, description, projectManager, dueDate, status, assignee: displayAssignee });
           editingId = null; renderRows();
         }catch(err){
           console.error(err); showModal("更新失敗","任務更新時發生錯誤。");
@@ -1418,12 +1330,8 @@
       };
       window.__deleteTask = async function(id){
         if(!confirm("確定刪除此任務？")) return;
-        try{
-          await deleteDoc(doc(db, TASKS_COLLECTION_PATH, id));
-          renderRows();
-        }catch(err){
-          console.error(err); showModal("刪除失敗","任務刪除時發生錯誤。");
-        }
+        try{ await deleteDoc(doc(db, TASKS_COLLECTION_PATH, id)); renderRows(); }
+        catch(err){ console.error(err); showModal("刪除失敗","任務刪除時發生錯誤。"); }
       };
 
       ["flt-project","flt-assignee","flt-pm","flt-status","flt-from","flt-to","flt-search"].forEach(id=>{
@@ -1442,118 +1350,124 @@
 
     // 追蹤專案（專案詳情）
     async function toggleFollowProject(projectId){
-      if(!isAuthorized()){ showModal("未登入","請先登入再追蹤專案。"); return; }
+      if(!currentUserId){ showModal("未登入","請先登入再追蹤專案。"); return; }
       const id = `${projectId}__${currentUserId}`;
       const ref = doc(db, WATCHERS_COLLECTION_PATH, id);
       try{
-        await deleteDoc(ref);
-        showModal("已取消追蹤", "已取消追蹤此專案。");
+        await deleteDoc(ref); showModal("已取消追蹤", "已取消追蹤此專案。");
       }catch(_){
-        try{
-          await setDoc(ref, { projectId, userId: currentUserId, createdAt: serverTimestamp() });
-          showModal("追蹤成功", "您已追蹤此專案。");
-        }catch(e){
-          console.error(e); showModal("操作失敗","更新追蹤狀態時發生錯誤。");
-        }
+        try{ await setDoc(ref, { projectId, userId: currentUserId, createdAt: serverTimestamp() }); showModal("追蹤成功", "您已追蹤此專案。"); }
+        catch(e){ console.error(e); showModal("操作失敗","更新追蹤狀態時發生錯誤。"); }
       }
     }
 
-    // 匯出專案 CSV（專案詳情）
+    // 匯出專案 CSV（含 needIT/requiredRoles）
     window.exportProjectCsv = function(projectId){
       const p = projects.find(x=>x.id===projectId);
       if(!p){ showModal("匯出失敗","找不到專案。"); return; }
-
       const headers = [
         "type","projectId","projectTitle","manager","budget","progress","status",
+        "personnelBudget","operatingBudget","equipmentBudget",
+        "personnelUsed","operatingUsed","equipmentUsed",
+        "needIT","requiredRoles",
         "taskId","taskName","taskAssignee","taskDueDate","taskStatus",
         "eventId","eventTitle","eventAssignee","eventStartDate","eventEndDate"
       ];
-
       const rows = [];
       rows.push({
-        type:"project",
-        projectId:p.id,
-        projectTitle:p.title||"",
-        manager:p.manager||"",
-        budget:Number(p.budget)||0,
-        progress:Number(p.progress)||0,
-        status:p.status||""
+        type:"project", projectId:p.id, projectTitle:p.title||"", manager:p.manager||"",
+        budget:n(p.budget), progress:n(p.progress), status:p.status||"",
+        personnelBudget:n(p.personnelBudget), operatingBudget:n(p.operatingBudget), equipmentBudget:n(p.equipmentBudget),
+        personnelUsed:n(p.personnelUsed), operatingUsed:n(p.operatingUsed), equipmentUsed:n(p.equipmentUsed),
+        needIT: !!p.needIT, requiredRoles: (p.requiredRoles||[]).join("；")
       });
-
       const tks = tasks.filter(t=>t.projectId===projectId);
       for(const t of tks){
-        const assignee = p.manager || "";
         rows.push({
-          type:"task",
-          projectId:p.id, projectTitle:p.title||"", manager:p.manager||"",
-          budget:Number(p.budget)||0, progress:Number(p.progress)||0, status:p.status||"",
-          taskId:t.id||"", taskName:t.taskName||"", taskAssignee:assignee,
-          taskDueDate:t.dueDate||"", taskStatus:t.status||""
+          type:"task", projectId:p.id, projectTitle:p.title||"", manager:p.manager||"",
+          budget:n(p.budget), progress:n(p.progress), status:p.status||"",
+          personnelBudget:n(p.personnelBudget), operatingBudget:n(p.operatingBudget), equipmentBudget:n(p.equipmentBudget),
+          personnelUsed:n(p.personnelUsed), operatingUsed:n(p.operatingUsed), equipmentUsed:n(p.equipmentUsed),
+          needIT: !!p.needIT, requiredRoles:(p.requiredRoles||[]).join("；"),
+          taskId:t.id||"", taskName:t.taskName||"", taskAssignee:(p.manager||""), taskDueDate:t.dueDate||"", taskStatus:t.status||""
         });
       }
-
       const evs = events.filter(e=>e.projectId===projectId);
       for(const ev of evs){
         rows.push({
-          type:"event",
-          projectId:p.id, projectTitle:p.title||"", manager:p.manager||"",
-          budget:Number(p.budget)||0, progress:Number(p.progress)||0, status:p.status||"",
+          type:"event", projectId:p.id, projectTitle:p.title||"", manager:p.manager||"",
+          budget:n(p.budget), progress:n(p.progress), status:p.status||"",
+          personnelBudget:n(p.personnelBudget), operatingBudget:n(p.operatingBudget), equipmentBudget:n(p.equipmentBudget),
+          personnelUsed:n(p.personnelUsed), operatingUsed:n(p.operatingUsed), equipmentUsed:n(p.equipmentUsed),
+          needIT: !!p.needIT, requiredRoles:(p.requiredRoles||[]).join("；"),
           eventId:ev.id||"", eventTitle:ev.title||"", eventAssignee:ev.assignee||"",
           eventStartDate:ev.startDate||ev.date||"", eventEndDate:ev.endDate||ev.startDate||ev.date||""
         });
       }
-
       const csv = arrayToCsv(headers, rows);
       triggerDownloadCsv(csv, `project_${p.id}.csv`);
     };
 
-    // 專案詳情（新增：主持人/專案對應篩選列）
+    // 專案詳情（金額/人力可更新 + 主持人/專案對應篩選）
     function renderProjectDetails(projectId){
-      const c = document.getElementById("main-content");
-      if(!c) return;
+      const c = document.getElementById("main-content"); if(!c) return;
 
       if (projectId) {
         const projForArg = projects.find(p=>p.id===projectId);
-        if (projForArg && detailsFilterPM !== (projForArg.manager || "")) {
-          detailsFilterPM = projForArg.manager || "";
-        }
+        if (projForArg && detailsFilterPM !== (projForArg.manager || "")) detailsFilterPM = projForArg.manager || "";
       }
-
       const pmList = Array.from(new Set(projects.map(p=>(p.manager||"").trim()).filter(Boolean))).sort((a,b)=>a.localeCompare(b,'zh-Hant'));
-
       const candidateProjects = (detailsFilterPM ? projects.filter(p=>(p.manager||"")===detailsFilterPM) : projects).slice().sort((a,b)=>a.id.localeCompare(b.id));
-
-      if (!projectId || !candidateProjects.some(p=>p.id===projectId)) {
-        selectedProjectId = candidateProjects[0]?.id || projects[0]?.id || null;
-      } else {
-        selectedProjectId = projectId;
-      }
+      if (!projectId || !candidateProjects.some(p=>p.id===projectId)) selectedProjectId = candidateProjects[0]?.id || projects[0]?.id || null;
+      else selectedProjectId = projectId;
 
       const p = projects.find(x=>x.id===selectedProjectId);
-      if(!p){
-        c.innerHTML = `<p class="text-gray-500">找不到該專案。</p>`;
-        return;
-      }
+      if(!p){ c.innerHTML = `<p class="text-gray-500">找不到該專案。</p>`; return; }
 
       const projectTasks = tasks.filter(t => t.projectId===selectedProjectId).slice(0,20);
       const projectEvents = events.filter(e => e.projectId===selectedProjectId).slice(0,20);
       const projectFiles = files.filter(f => f.projectId===selectedProjectId).slice(0,20);
 
       if(detailsWatchersUnsub){ try{ detailsWatchersUnsub(); }catch{} detailsWatchersUnsub = null; }
-      let watchersCount = 0;
-      let userFollowing = false;
       detailsWatchersUnsub = onSnapshot(
         query(collection(db, WATCHERS_COLLECTION_PATH), where("projectId","==", selectedProjectId)),
         (snap)=>{
-          watchersCount = snap.size;
-          userFollowing = snap.docs.some(d => (d.data().userId||"") === currentUserId);
           const indicator = document.getElementById("follow-indicator");
           const btn = document.getElementById("btn-follow-project");
-          if(indicator) indicator.textContent = `追蹤者：${watchersCount} 人${userFollowing?"（你已追蹤）":""}`;
-          if(btn) btn.textContent = userFollowing ? "取消追蹤" : "追蹤此專案";
+          const following = snap.docs.some(d => (d.data().userId||"") === currentUserId);
+          if(indicator) indicator.textContent = `追蹤者：${snap.size} 人${following?"（你已追蹤）":""}`;
+          if(btn) btn.textContent = following ? "取消追蹤" : "追蹤此專案";
         }
       );
 
+      // 進度條資料
+      const cat = [
+        { key:"personnel", title:"人事費", budget:n(p.personnelBudget), used:n(p.personnelUsed) },
+        { key:"operating", title:"業務費", budget:n(p.operatingBudget), used:n(p.operatingUsed) },
+        { key:"equipment", title:"設備費", budget:n(p.equipmentBudget), used:n(p.equipmentUsed) }
+      ];
+      const budgetCards = cat.map(x=>{
+        const remain = x.budget - x.used;
+        const rate = x.budget>0 ? clamp01(x.used/x.budget) : 0;
+        const bar = remain>=0 ? (rate>=0.95 ? "bg-yellow-400" : "bg-primary-blue") : "bg-red-500";
+        return `
+          <div class="project-card bg-white p-4 rounded-xl shadow">
+            <div class="flex items-center justify-between">
+              <div class="font-semibold text-gray-800">${escapeHtml(x.title)}</div>
+              <div class="text-sm text-gray-500">預算：${fmtMoney(x.budget)}</div>
+            </div>
+            <div class="w-full bg-gray-200 rounded-full h-3 mt-2">
+              <div class="progress-bar h-3 rounded-full ${bar}" style="width:${(rate*100).toFixed(0)}%"></div>
+            </div>
+            <div class="mt-2 text-sm text-gray-700 flex justify-between">
+              <span>已用：<strong>${fmtMoney(x.used)}</strong>（${(rate*100).toFixed(0)}%）</span>
+              <span>${remain>=0 ? `剩餘：${fmtMoney(remain)}` : `超支：${fmtMoney(-remain)}`}</span>
+            </div>
+          </div>
+        `;
+      }).join("");
+
+      // 篩選列 HTML
       const pmOptionsHtml = [`<option value="">全部主持人</option>`].concat(pmList.map(pm => `<option value="${escapeHtml(pm)}" ${detailsFilterPM===pm?'selected':''}>${escapeHtml(pm)}</option>`)).join("");
       const projectOptionsHtml = candidateProjects.map(cp => `<option value="${escapeHtml(cp.id)}" ${cp.id===selectedProjectId?'selected':''}>${escapeHtml(cp.id)} - ${escapeHtml(cp.title||"")}</option>`).join("");
 
@@ -1585,37 +1499,86 @@
         </div>
 
         <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <div class="lg:col-span-2 project-card bg-white p-6 rounded-xl shadow">
-            <div class="flex items-start justify-between">
-              <div>
-                <div class="text-lg font-semibold text-primary-blue">${escapeHtml(p.title||"")}</div>
-                <div class="text-sm text-gray-500 mt-1">編號：${escapeHtml(p.id||"")}</div>
-              </div>
-              <div class="text-right">
-                <div id="follow-indicator" class="text-sm text-gray-600">追蹤者：-- 人</div>
-                <div class="mt-2 flex gap-2 justify-end">
-                  <button id="btn-follow-project"
-                          class="px-3 py-1.5 text-sm rounded-md bg-primary-blue text-white hover:bg-blue-700"
-                          onclick="toggleFollowProject('${escapeHtml(selectedProjectId)}')">
-                    追蹤此專案
-                  </button>
-                  <button id="btn-export-project"
-                          class="px-3 py-1.5 text-sm rounded-md bg-gray-100 text-gray-700 hover:bg-gray-200"
-                          onclick="exportProjectCsv('${escapeHtml(selectedProjectId)}')">
-                    下載專案 CSV
-                  </button>
+          <div class="lg:col-span-2 space-y-6">
+            <div class="project-card bg-white p-6 rounded-xl shadow">
+              <div class="flex items-start justify-between">
+                <div>
+                  <div class="text-lg font-semibold text-primary-blue">${escapeHtml(p.title||"")}</div>
+                  <div class="text-sm text-gray-500 mt-1">編號：${escapeHtml(p.id||"")}</div>
+                </div>
+                <div class="text-right">
+                  <div id="follow-indicator" class="text-sm text-gray-600">追蹤者：-- 人</div>
+                  <div class="mt-2 flex gap-2 justify-end">
+                    <button id="btn-follow-project" class="px-3 py-1.5 text-sm rounded-md bg-primary-blue text-white hover:bg-blue-700" onclick="toggleFollowProject('${escapeHtml(selectedProjectId)}')">追蹤此專案</button>
+                    <button id="btn-export-project" class="px-3 py-1.5 text-sm rounded-md bg-gray-100 text-gray-700 hover:bg-gray-200" onclick="exportProjectCsv('${escapeHtml(selectedProjectId)}')">下載專案 CSV</button>
+                  </div>
                 </div>
               </div>
+
+              <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4 text-sm">
+                <div><div class="text-gray-500">主持人</div><div class="font-medium">${escapeHtml(p.manager||"")}</div></div>
+                <div><div class="text-gray-500">進度</div><div class="font-medium">${n(p.progress)}%</div></div>
+                <div><div class="text-gray-500">狀態</div><div class="font-medium">${escapeHtml(p.status||"")}</div></div>
+                <div><div class="text-gray-500">預算概算</div><div class="font-medium">${fmtMoney(n(p.budget))}</div></div>
+              </div>
             </div>
 
-            <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4 text-sm">
-              <div><div class="text-gray-500">主持人</div><div class="font-medium">${escapeHtml(p.manager||"")}</div></div>
-              <div><div class="text-gray-500">進度</div><div class="font-medium">${n(p.progress)}%</div></div>
-              <div><div class="text-gray-500">狀態</div><div class="font-medium">${escapeHtml(p.status||"")}</div></div>
-              <div><div class="text-gray-500">預算概算</div><div class="font-medium">${fmtMoney(n(p.budget))}</div></div>
+            <!-- 金額使用概況 -->
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+              ${budgetCards}
             </div>
 
-            <div class="mt-6">
+            <!-- 可更新：金額與人力設定 -->
+            <div class="project-card bg-white p-6 rounded-xl shadow">
+              <h3 class="text-lg font-semibold text-gray-800 mb-3 flex items-center"><i data-lucide="coins" class="w-5 h-5 mr-2 text-primary-blue"></i> 金額與人力設定</h3>
+              <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                  <label class="block text-xs text-gray-600">人事費 預算 / 已用</label>
+                  <div class="flex gap-2 mt-1">
+                    <input id="edit-personnel-budget" type="number" class="w-1/2 rounded-md border-gray-300 p-2 border" value="${n(p.personnelBudget)}" min="0">
+                    <input id="edit-personnel-used" type="number" class="w-1/2 rounded-md border-gray-300 p-2 border" value="${n(p.personnelUsed)}" min="0">
+                  </div>
+                </div>
+                <div>
+                  <label class="block text-xs text-gray-600">業務費 預算 / 已用</label>
+                  <div class="flex gap-2 mt-1">
+                    <input id="edit-operating-budget" type="number" class="w-1/2 rounded-md border-gray-300 p-2 border" value="${n(p.operatingBudget)}" min="0">
+                    <input id="edit-operating-used" type="number" class="w-1/2 rounded-md border-gray-300 p-2 border" value="${n(p.operatingUsed)}" min="0">
+                  </div>
+                </div>
+                <div>
+                  <label class="block text-xs text-gray-600">設備費 預算 / 已用</label>
+                  <div class="flex gap-2 mt-1">
+                    <input id="edit-equipment-budget" type="number" class="w-1/2 rounded-md border-gray-300 p-2 border" value="${n(p.equipmentBudget)}" min="0">
+                    <input id="edit-equipment-used" type="number" class="w-1/2 rounded-md border-gray-300 p-2 border" value="${n(p.equipmentUsed)}" min="0">
+                  </div>
+                </div>
+              </div>
+
+              <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
+                <div class="md:col-span-1">
+                  <label class="block text-sm font-medium text-gray-700">是否需要資訊人員</label>
+                  <label class="inline-flex items-center gap-2 mt-2">
+                    <input type="checkbox" id="edit-needit" ${p.needIT ? "checked":""}>
+                    <span class="text-sm">需要資訊人員</span>
+                  </label>
+                </div>
+                <div class="md:col-span-2">
+                  <label class="block text-sm font-medium text-gray-700">需要的人力（可複選）</label>
+                  <div id="edit-roles-box" class="mt-2 flex flex-wrap">
+                    ${ rolesCheckboxesHtml(p.requiredRoles||[]) }
+                  </div>
+                </div>
+              </div>
+
+              <div class="mt-4 flex justify-end gap-3">
+                <button id="btn-update-finance" class="px-4 py-2 rounded-lg bg-primary-blue text-white hover:bg-blue-700">儲存變更</button>
+              </div>
+              <div id="update-finance-feedback" class="text-sm mt-2"></div>
+            </div>
+
+            <!-- 任務列表 -->
+            <div class="project-card bg-white p-6 rounded-xl shadow">
               <div class="text-sm text-gray-500 mb-2">近期任務（最多 20 筆）</div>
               <div class="border rounded-lg overflow-hidden">
                 <table class="min-w-full">
@@ -1652,7 +1615,8 @@
               </div>
             </div>
 
-            <div class="mt-6">
+            <!-- 行事列表 -->
+            <div class="project-card bg-white p-6 rounded-xl shadow">
               <div class="text-sm text-gray-500 mb-2">近期行事（最多 20 筆）</div>
               <div class="border rounded-lg overflow-hidden">
                 <table class="min-w-full">
@@ -1717,39 +1681,62 @@
         selectedProjectId = projects[0]?.id || null;
         renderProjectDetails(selectedProjectId);
       });
+
+      // 綁定：更新金額與人力
+      document.getElementById("btn-update-finance")?.addEventListener("click", async ()=>{
+        if(!currentUserId){ showModal("未登入","請先登入再更新。"); return; }
+        const feedback = document.getElementById("update-finance-feedback");
+        feedback.className = "text-sm text-gray-600"; feedback.textContent = "儲存中…";
+
+        const personnelBudget = n(document.getElementById("edit-personnel-budget").value);
+        const operatingBudget = n(document.getElementById("edit-operating-budget").value);
+        const equipmentBudget = n(document.getElementById("edit-equipment-budget").value);
+        const personnelUsed = n(document.getElementById("edit-personnel-used").value);
+        const operatingUsed = n(document.getElementById("edit-operating-used").value);
+        const equipmentUsed = n(document.getElementById("edit-equipment-used").value);
+        const needIT = !!document.getElementById("edit-needit").checked;
+        const requiredRoles = Array.from(document.querySelectorAll("#edit-roles-box input[name='proj-role']:checked")).map(x=>x.value);
+        const budget = personnelBudget + operatingBudget + equipmentBudget;
+
+        try{
+          await updateDoc(doc(db, PROJECTS_COLLECTION_PATH, selectedProjectId), {
+            personnelBudget, operatingBudget, equipmentBudget,
+            personnelUsed, operatingUsed, equipmentUsed,
+            needIT, requiredRoles, budget
+          });
+          feedback.className = "text-sm text-green-600"; feedback.textContent = "已更新。";
+          // 重新渲染，更新進度條
+          renderProjectDetails(selectedProjectId);
+        }catch(err){
+          console.error(err);
+          feedback.className = "text-sm text-red-600"; feedback.textContent = "更新失敗：" + (err?.message || String(err));
+        }
+      });
     }
 
-    // ---- 資訊交流（圖片/文章/文字/連結 + 刪除貼文按鈕） ----
-
-    // 嘗試從 Firebase Storage 公開 URL 解析出檔案路徑
+    // ---- 資訊交流（含刪除） ----
     function tryGetStoragePathFromUrl(url){
       try{
         if(!url) return "";
         const m = String(url).match(/\/o\/([^?]+)/);
         if(!m) return "";
-        return decodeURIComponent(m[1]); // e.g. community_uploads/uid/123_file.png
+        return decodeURIComponent(m[1]);
       }catch{ return ""; }
     }
-
-    // 刪除貼文（含圖片檔案（若有））
     window.__deletePost = async function(postId, imageUrl){
-      if(!isAuthorized()){ showModal("未登入","請先登入再刪除貼文。"); return; }
+      if(!currentUserId){ showModal("未登入","請先登入再刪除貼文。"); return; }
       if(!confirm("確定要刪除此貼文？此動作無法復原。")) return;
       try{
         await deleteDoc(doc(db, COMMUNITY_COLLECTION_PATH, postId));
         if(imageUrl){
           const path = tryGetStoragePathFromUrl(imageUrl);
-          if(path){
-            try{ await deleteObject(sRef(storage, path)); }catch(e){ console.warn("刪除圖片失敗：", e); }
-          }
+          if(path){ try{ await deleteObject(sRef(storage, path)); }catch(e){ console.warn("刪除圖片失敗：", e); } }
         }
         showModal("已刪除","貼文已刪除。");
       }catch(e){
-        console.error(e);
-        showModal("刪除失敗", e?.message || "執行刪除時發生錯誤。");
+        console.error(e); showModal("刪除失敗", e?.message || "執行刪除時發生錯誤。");
       }
     };
-
     async function uploadImageAndGetUrl(file){
       if(!file) return "";
       const path = `community_uploads/${currentUserId || 'anonymous'}/${Date.now()}_${file.name}`;
@@ -1761,9 +1748,7 @@
       return await getDownloadURL(ref);
     }
     function renderPostCards(list){
-      if(!list || !list.length){
-        return `<div class="text-sm text-gray-500">目前沒有貼文，搶先分享第一則！</div>`;
-      }
+      if(!list || !list.length) return `<div class="text-sm text-gray-500">目前沒有貼文，搶先分享第一則！</div>`;
       return list.map(p=>{
         const when = p.createdAt?.toDate ? p.createdAt.toDate().toLocaleString() : (p.createdAt || "");
         const canDelete = (p.reporterId && p.reporterId === currentUserId);
@@ -1787,9 +1772,7 @@
                                  </button>` : "" }
               </div>
             </div>
-
             <div class="mt-3 text-sm text-gray-800 whitespace-pre-wrap">${escapeHtml(p.text||"")}</div>
-
             ${ (p.postType==="article" && p.title) ? `<div class="mt-2 text-base font-semibold">${escapeHtml(p.title)}</div>` : "" }
             ${ (p.postType==="link" && p.url) ? `<div class="mt-2"><a class="text-primary-blue hover:underline break-all" href="${escapeHtml(p.url)}" target="_blank" rel="noopener">${escapeHtml(p.title||p.url)}</a></div>` : "" }
             ${ (p.postType==="image" && p.imageUrl) ? `<div class="mt-3"><img src="${escapeHtml(p.imageUrl)}" alt="" class="rounded-lg max-h-80 object-contain"></div>` : "" }
@@ -1800,12 +1783,10 @@
     function renderCommunity(){
       const c = document.getElementById("main-content");
       if(!c) return;
-
       c.innerHTML = `
         <h2 class="text-3xl font-bold text-gray-800 mb-6 border-b pb-2 flex items-center">
           <i data-lucide="messages-square" class="w-7 h-7 mr-3 text-primary-blue"></i> 資訊交流
         </h2>
-
         <div class="project-card bg-white p-6 rounded-xl shadow mb-6">
           <h3 class="text-lg font-semibold text-gray-800 mb-3">分享內容</h3>
           <form id="post-form" class="space-y-3">
@@ -1818,37 +1799,29 @@
                 <option value="article">文章</option>
               </select>
             </div>
-
             <div id="field-title" class="hidden">
               <label class="block text-sm text-gray-700">標題</label>
               <input id="post-title" type="text" class="mt-1 w-full rounded-md border-gray-300 p-2 border" placeholder="文章/連結標題">
             </div>
-
             <div id="field-url" class="hidden">
               <label class="block text-sm text-gray-700">連結網址</label>
               <input id="post-url" type="url" class="mt-1 w-full rounded-md border-gray-300 p-2 border" placeholder="https://">
             </div>
-
             <div id="field-image" class="hidden">
               <label class="block text-sm text-gray-700">上傳圖片</label>
               <input id="post-image" type="file" accept="image/*" class="mt-1 w-full text-sm">
             </div>
-
             <div id="field-text">
               <label class="block text-sm text-gray-700">內容</label>
               <textarea id="post-text" rows="3" class="mt-1 w-full rounded-md border-gray-300 p-2 border" placeholder="說點什麼..."></textarea>
             </div>
-
             <div class="flex justify-end">
               <button type="submit" class="px-4 py-2 bg-primary-blue text-white rounded-lg hover:bg-blue-700">發佈</button>
             </div>
             <div id="post-feedback" class="text-sm"></div>
           </form>
         </div>
-
-        <div class="space-y-4" id="post-feed">
-          ${ renderPostCards(communityPosts) }
-        </div>
+        <div class="space-y-4" id="post-feed">${ renderPostCards(communityPosts) }</div>
       `;
       if(window.lucide?.createIcons) lucide.createIcons();
 
@@ -1870,38 +1843,30 @@
       document.getElementById("post-form")?.addEventListener("submit", async (e)=>{
         e.preventDefault();
         const feedback = document.getElementById("post-feedback");
-        if(!isAuthorized()){ feedback.className="text-sm text-red-600"; feedback.textContent="請先登入再發佈。"; return; }
-
+        if(!currentUserId){ feedback.className="text-sm text-red-600"; feedback.textContent="請先登入再發佈。"; return; }
         const postType = document.getElementById("post-type").value;
         const title = document.getElementById("post-title").value.trim();
         const url = document.getElementById("post-url").value.trim();
         const text = document.getElementById("post-text").value.trim();
         const imageFile = document.getElementById("post-image").files?.[0];
-
         try{
           feedback.className="text-sm text-gray-600"; feedback.textContent="上傳中...";
           let imageUrl = "";
-          if(postType==="image" && imageFile){
-            imageUrl = await uploadImageAndGetUrl(imageFile);
-          }
-
+          if(postType==="image" && imageFile) imageUrl = await uploadImageAndGetUrl(imageFile);
           const payload = {
             postType, title, url, text, imageUrl,
             authorName: userProfile.displayName || userProfile.email || "使用者",
             authorEmail: userProfile.email || "",
             authorPhotoURL: userProfile.photoURL || "",
-            createdAt: serverTimestamp(),
-            reporterId: currentUserId
+            createdAt: serverTimestamp(), reporterId: currentUserId
           };
-
           if(postType==="link" && !url){ feedback.className="text-sm text-red-600"; feedback.textContent="請輸入連結網址。"; return; }
           if(postType==="image" && !imageUrl){ feedback.className="text-sm text-red-600"; feedback.textContent="請選擇圖片檔案。"; return; }
           if(postType==="article" && !title){ feedback.className="text-sm text-red-600"; feedback.textContent="請輸入文章標題。"; return; }
           if(!text && postType!=="image" && postType!=="link"){ feedback.className="text-sm text-red-600"; feedback.textContent="請輸入內容。"; return; }
-
           await addDoc(collection(db, COMMUNITY_COLLECTION_PATH), payload);
           feedback.className="text-sm text-secondary-green"; feedback.textContent="發佈成功！";
-          (document.getElementById("post-form")).reset();
+          (document.getElementById("post-form"))?.reset();
           updateFields();
         }catch(err){
           console.error(err);
@@ -1919,22 +1884,15 @@
     }
 
     // 啟動
-    try { wireEmailAuthButtons(); } catch (_) {}
     try { initFirebase(); } catch (e) {
       console.error("初始化失敗：", e);
-      const box = document.getElementById("auth-error");
-      if (box) box.textContent = "初始化失敗：" + (e?.message || String(e));
+      const box = document.getElementById("auth-error"); if (box) box.textContent = "初始化失敗：" + (e?.message || String(e));
     }
-    window.addEventListener("DOMContentLoaded", () => {
-      try { wireEmailAuthButtons(); } catch (_) {}
-    });
     window.addEventListener("error", (e) => {
-      const box = document.getElementById("auth-error");
-      if (box && !box.textContent) box.textContent = "錯誤：" + (e?.message || String(e.error || e));
+      const box = document.getElementById("auth-error"); if (box && !box.textContent) box.textContent = "錯誤：" + (e?.message || String(e.error || e));
     });
     window.addEventListener("unhandledrejection", (e) => {
-      const box = document.getElementById("auth-error");
-      if (box && !box.textContent) box.textContent = "執行失敗：" + (e?.reason?.message || String(e.reason || e));
+      const box = document.getElementById("auth-error"); if (box && !box.textContent) box.textContent = "執行失敗：" + (e?.reason?.message || String(e.reason || e));
     });
   </script>
 </body>
